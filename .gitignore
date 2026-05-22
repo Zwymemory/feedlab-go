@@ -1,0 +1,17 @@
+.DS_Store
+
+# Go
+bin/
+coverage.out
+
+# Local config overrides
+*.local.yaml
+*.local.yml
+
+# IDE
+.idea/
+.vscode/
+
+# Runtime files
+logs/
+tmp/

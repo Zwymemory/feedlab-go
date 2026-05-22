@@ -1,0 +1,306 @@
+{
+  "info": {
+    "name": "FeedLab Go V1",
+    "description": "FeedLab V1 Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 删除。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": "secret123"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "post_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Module 1 - Health Check",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "检查 API、MySQL、Redis 是否可用。成功时 code=0；依赖未启动时 code=50000。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 2 - Auth",
+      "item": [
+        {
+          "name": "POST /api/v1/auth/register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = Date.now();",
+                  "pm.collectionVariables.set('username', `user_${suffix}`);",
+                  "pm.collectionVariables.set('email', `user_${suffix}@feedlab.test`);",
+                  "pm.collectionVariables.set('password', 'secret123');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\",\n  \"nickname\": \"FeedLab Tester\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "注册用户。Pre-request 会生成唯一 username/email，避免重复邮箱冲突。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/auth/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.access_token) {",
+                  "  pm.collectionVariables.set('access_token', json.data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "用注册阶段保存的 email/password 登录。Test 脚本会保存 access_token。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "me"
+              ]
+            },
+            "description": "验证 JWT 鉴权闭环。必须先执行登录接口保存 access_token。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 3 - Posts",
+      "item": [
+        {
+          "name": "POST /api/v1/posts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('post_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"FeedLab V1 帖子测试\",\n  \"content\": \"这是通过 Postman 创建的第一篇帖子。\",\n  \"cover_url\": \"\",\n  \"content_type\": \"article\",\n  \"status\": \"published\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts"
+              ]
+            },
+            "description": "创建帖子。必须先执行登录接口保存 access_token。Test 脚本会保存 post_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "分页查看 published 帖子列表，不需要 Token。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "查看刚创建的帖子详情，不需要 Token。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

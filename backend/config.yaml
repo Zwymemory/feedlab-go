@@ -1,0 +1,28 @@
+server:
+  addr: ":8080"
+  mode: "debug"
+
+mysql:
+  host: "127.0.0.1"
+  port: 3306
+  username: "feedlab"
+  password: "feedlab_pass"
+  database: "feedlab"
+  charset: "utf8mb4"
+  parse_time: true
+  loc: "Local"
+  max_idle_conns: 10
+  max_open_conns: 50
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+jwt:
+  secret: "feedlab_v1_change_me"
+  issuer: "feedlab"
+  expires_hours: 2
+
+log:
+  level: "debug"

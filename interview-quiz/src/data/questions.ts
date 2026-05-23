@@ -21,6 +21,13 @@ export const modules: QuizModule[] = [
     subtitle: "posts 表、事务、软删除、分页、权限",
     accent: "#e05a47",
     summary: "理解内容社区核心闭环：发布、展示、详情、删除，以及跨表计数一致性。"
+  },
+  {
+    id: "module-4-swagger",
+    title: "模块 4：Swagger 文档",
+    subtitle: "OpenAPI、接口契约、文档展示",
+    accent: "#8a63d2",
+    summary: "理解接口文档不是摆设：它定义 API 契约，帮助联调、测试、展示和后续维护。"
   }
 ];
 
@@ -248,5 +255,63 @@ export const questions: Question[] = [
     keyPoints: ["冗余计数", "读性能", "事务一致性", "后端可信"],
     interviewTips: ["可以补一句：高并发点赞数这类计数未来可能会引入 Redis，但 V1 的发帖数先用 MySQL 事务。"],
     codeRefs: ["backend/internal/repository/user_repository.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "swagger-contract-1",
+    moduleId: "module-4-swagger",
+    type: "single",
+    title: "Swagger 文档的核心价值是什么？",
+    prompt: "FeedLab V1 提供 /swagger/doc.json 和 /swagger/index.html，最核心的工程价值是什么？",
+    choices: [
+      { id: "A", text: "让接口速度变快" },
+      { id: "B", text: "把 API 的路径、请求体、响应结构和鉴权方式变成可共享的契约" },
+      { id: "C", text: "替代数据库事务" },
+      { id: "D", text: "自动防止 SQL 注入" }
+    ],
+    correctAnswers: ["B"],
+    referenceAnswer: "Swagger/OpenAPI 的核心价值是描述 API 契约，让前端、测试、后端和面试展示都基于同一份接口定义。",
+    explanation: "接口文档不是为了好看，而是减少沟通成本和联调成本。它明确哪些接口存在、需要什么参数、可能返回什么响应。",
+    whyOthersWrong: {
+      A: "文档不会提升接口运行速度。",
+      C: "事务解决数据一致性，Swagger 解决接口描述。",
+      D: "SQL 注入防护依赖参数化查询、ORM 和输入校验。"
+    },
+    keyPoints: ["API 契约", "联调效率", "测试导入", "面试展示"],
+    interviewTips: ["可以说：README 讲设计，Swagger 讲接口调用，两者互补。"],
+    codeRefs: ["backend/internal/swagger/swagger.go", "backend/internal/router/router.go"]
+  },
+  {
+    id: "swagger-openapi-1",
+    moduleId: "module-4-swagger",
+    type: "short",
+    title: "OpenAPI JSON 和页面有什么区别？",
+    prompt: "请解释 /swagger/doc.json 和 /swagger/index.html 的职责区别。",
+    referenceAnswer: "/swagger/doc.json 是机器可读的 OpenAPI 3.0 文档，可以被 Postman、Apifox 或 Swagger UI 导入。/swagger/index.html 是人可读的浏览页面，方便直接在浏览器查看接口列表和响应结构。",
+    explanation: "一个偏标准数据格式，一个偏展示层。把两者拆开，可以让文档既能被工具消费，也能被人阅读。",
+    keyPoints: ["doc.json 机器可读", "index.html 人可读", "同一份接口契约", "方便导入和展示"],
+    interviewTips: ["如果被问为什么不只写 README，可以说 README 不是标准 API schema，工具无法稳定解析。"],
+    codeRefs: ["backend/internal/swagger/swagger.go"]
+  },
+  {
+    id: "swagger-lightweight-1",
+    moduleId: "module-4-swagger",
+    type: "multiple",
+    title: "为什么当前 V1 采用轻量内置文档？",
+    prompt: "关于 FeedLab V1 当前 Swagger/OpenAPI 实现，哪些说法合理？",
+    choices: [
+      { id: "A", text: "不依赖 swag CLI，降低本地和 VPS 环境要求" },
+      { id: "B", text: "仍然提供标准 OpenAPI JSON，便于导入接口工具" },
+      { id: "C", text: "它会自动替你生成数据库表" },
+      { id: "D", text: "后续如果接口很多，可以再切换到 swag 注释生成流程" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "轻量内置文档适合 V1：无需额外 CLI，部署简单，同时保留 OpenAPI JSON 的标准化能力。后续接口增多后，可以再引入 swag CLI 自动生成。",
+    explanation: "这是阶段性取舍。V1 重点是跑通闭环和展示能力，不必一开始把工具链复杂度拉满。",
+    whyOthersWrong: {
+      C: "数据库表由 GORM AutoMigrate 创建，和 OpenAPI 文档无关。"
+    },
+    keyPoints: ["轻量部署", "标准 JSON", "工具可导入", "后续可演进"],
+    interviewTips: ["可以补一句：如果团队要求统一 Swagger UI，可以把 doc.json 接到官方 Swagger UI。"],
+    codeRefs: ["backend/internal/swagger/swagger.go"]
   }
 ];

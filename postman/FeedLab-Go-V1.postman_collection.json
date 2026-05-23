@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1",
-    "description": "FeedLab V1 Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 删除。",
+    "description": "FeedLab V1 Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -297,6 +297,49 @@
               ]
             },
             "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 4 - Swagger",
+      "item": [
+        {
+          "name": "GET /swagger/index.html",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/swagger/index.html",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger",
+                "index.html"
+              ]
+            },
+            "description": "浏览 FeedLab V1 API 文档页面。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /swagger/doc.json",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/swagger/doc.json",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger",
+                "doc.json"
+              ]
+            },
+            "description": "获取 OpenAPI 3.0 JSON 文档，可导入 Postman、Apifox 或 Swagger UI。"
           },
           "response": []
         }

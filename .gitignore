@@ -20,3 +20,6 @@ tmp/
 node_modules/
 dist/
 .vite/
+*.tsbuildinfo
+interview-quiz/vite.config.js
+interview-quiz/vite.config.d.ts

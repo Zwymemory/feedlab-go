@@ -9,6 +9,7 @@ import (
 	"feedlab/backend/internal/middleware"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/service"
+	"feedlab/backend/internal/swagger"
 	feedjwt "feedlab/backend/pkg/jwt"
 
 	"github.com/gin-gonic/gin"
@@ -52,6 +53,7 @@ func New(deps Dependencies) *gin.Engine {
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 
 	engine.GET("/healthz", healthController.Health)
+	swagger.RegisterRoutes(engine)
 
 	api := engine.Group("/api/v1")
 	auth := api.Group("/auth")

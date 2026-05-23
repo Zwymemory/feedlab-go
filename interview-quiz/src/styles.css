@@ -379,11 +379,13 @@ button {
   display: grid;
   gap: 18px;
   padding: 20px;
+  overflow: hidden;
 }
 
 .panel-section {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .panel-section h3 {
@@ -395,17 +397,23 @@ button {
   margin: 0;
   color: #566579;
   line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .answer-line {
   padding: 12px;
   border-radius: 8px;
   background: #f3f6fa;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .explanation {
   padding-left: 12px;
   border-left: 3px solid #2f7dff;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .muted {
@@ -418,6 +426,15 @@ button {
   padding-left: 18px;
   color: #566579;
   line-height: 1.65;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.compact-list li,
+.code-list li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .tag-list {
@@ -438,6 +455,7 @@ button {
 .code-list li {
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
+  word-break: break-all;
 }
 
 @media (max-width: 1180px) {

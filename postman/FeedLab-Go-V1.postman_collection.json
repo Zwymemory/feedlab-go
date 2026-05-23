@@ -320,7 +320,7 @@
                 "index.html"
               ]
             },
-            "description": "浏览 FeedLab V1 API 文档页面。"
+            "description": "打开可交互 Swagger UI。页面支持 Try it out、Authorize 填写 JWT，并可直接调用本地 API。"
           },
           "response": []
         },

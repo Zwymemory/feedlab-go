@@ -246,14 +246,14 @@ curl -X DELETE http://localhost:8080/api/v1/posts/1 \
 
 ### 为什么这样设计
 
-- V1 使用内置 OpenAPI JSON 和轻量 HTML 文档页，不依赖 `swag` CLI 或额外运行时包，部署到 1C2G VPS 更轻。
+- V1 使用内置 OpenAPI JSON + CDN Swagger UI，不依赖 `swag` CLI 或额外 Go 运行时包，部署到 1C2G VPS 更轻。
 - `/swagger/doc.json` 提供标准 OpenAPI 3.0 文档，后续可以导入 Postman、Apifox 或 Swagger UI。
-- `/swagger/index.html` 提供浏览器可读页面，方便面试展示接口列表、请求体、响应结构和鉴权方式。
+- `/swagger/index.html` 提供可交互 Swagger UI，支持 `Try it out` 直接测试接口。
 - Swagger 文档不是替代 README，而是 API 契约；README 解释项目设计，Swagger 解释接口怎么调用。
 
 ### GET /swagger/index.html
 
-用途：浏览 FeedLab V1 API 文档页面。
+用途：浏览 FeedLab V1 API 文档页面，并直接测试接口。
 
 测试：
 
@@ -266,6 +266,15 @@ curl http://localhost:8080/swagger/index.html
 ```text
 http://localhost:8080/swagger/index.html
 ```
+
+Swagger UI 测试流程：
+
+1. 展开 `POST /api/v1/auth/register`，点击 `Try it out`，使用示例请求体注册用户。
+2. 展开 `POST /api/v1/auth/login`，点击 `Try it out` 登录。
+3. 复制登录响应里的 `data.access_token`。
+4. 点击页面右上角 `Authorize`，在 `BearerAuth` 中粘贴 token。Swagger UI 会自动添加 `Bearer` 前缀，不需要手动输入 `Bearer `。
+5. 展开 `POST /api/v1/posts`，点击 `Try it out` 发布帖子。
+6. 展开 `GET /api/v1/posts`，设置 `page` 和 `page_size` 后查询帖子列表。
 
 ### GET /swagger/doc.json
 

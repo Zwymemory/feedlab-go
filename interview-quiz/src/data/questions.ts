@@ -27,7 +27,7 @@ export const modules: QuizModule[] = [
     title: "模块 4：Swagger 文档",
     subtitle: "OpenAPI、接口契约、文档展示",
     accent: "#8a63d2",
-    summary: "理解接口文档不是摆设：它定义 API 契约，帮助联调、测试、展示和后续维护。"
+    summary: "理解接口文档不是摆设：它定义 API 契约，Swagger UI 还能直接调试接口。"
   }
 ];
 
@@ -261,7 +261,7 @@ export const questions: Question[] = [
     moduleId: "module-4-swagger",
     type: "single",
     title: "Swagger 文档的核心价值是什么？",
-    prompt: "FeedLab V1 提供 /swagger/doc.json 和 /swagger/index.html，最核心的工程价值是什么？",
+    prompt: "FeedLab V1 提供 /swagger/doc.json 和可交互的 /swagger/index.html，最核心的工程价值是什么？",
     choices: [
       { id: "A", text: "让接口速度变快" },
       { id: "B", text: "把 API 的路径、请求体、响应结构和鉴权方式变成可共享的契约" },
@@ -269,8 +269,8 @@ export const questions: Question[] = [
       { id: "D", text: "自动防止 SQL 注入" }
     ],
     correctAnswers: ["B"],
-    referenceAnswer: "Swagger/OpenAPI 的核心价值是描述 API 契约，让前端、测试、后端和面试展示都基于同一份接口定义。",
-    explanation: "接口文档不是为了好看，而是减少沟通成本和联调成本。它明确哪些接口存在、需要什么参数、可能返回什么响应。",
+    referenceAnswer: "Swagger/OpenAPI 的核心价值是描述 API 契约，让前端、测试、后端和面试展示都基于同一份接口定义；Swagger UI 还能基于这份契约直接发请求验证接口。",
+    explanation: "接口文档不是为了好看，而是减少沟通成本和联调成本。OpenAPI 负责标准描述，Swagger UI 负责把描述变成可交互的调试页面。",
     whyOthersWrong: {
       A: "文档不会提升接口运行速度。",
       C: "事务解决数据一致性，Swagger 解决接口描述。",
@@ -286,9 +286,9 @@ export const questions: Question[] = [
     type: "short",
     title: "OpenAPI JSON 和页面有什么区别？",
     prompt: "请解释 /swagger/doc.json 和 /swagger/index.html 的职责区别。",
-    referenceAnswer: "/swagger/doc.json 是机器可读的 OpenAPI 3.0 文档，可以被 Postman、Apifox 或 Swagger UI 导入。/swagger/index.html 是人可读的浏览页面，方便直接在浏览器查看接口列表和响应结构。",
-    explanation: "一个偏标准数据格式，一个偏展示层。把两者拆开，可以让文档既能被工具消费，也能被人阅读。",
-    keyPoints: ["doc.json 机器可读", "index.html 人可读", "同一份接口契约", "方便导入和展示"],
+    referenceAnswer: "/swagger/doc.json 是机器可读的 OpenAPI 3.0 文档，可以被 Postman、Apifox 或 Swagger UI 导入。/swagger/index.html 是 Swagger UI 页面，读取 doc.json 后渲染接口，并提供 Try it out 直接测试接口。",
+    explanation: "一个是标准数据，一个是交互界面。把两者拆开，可以让文档既能被工具消费，也能被人在浏览器里调试。",
+    keyPoints: ["doc.json 机器可读", "Swagger UI 可交互", "Try it out", "同一份接口契约"],
     interviewTips: ["如果被问为什么不只写 README，可以说 README 不是标准 API schema，工具无法稳定解析。"],
     codeRefs: ["backend/internal/swagger/swagger.go"]
   },
@@ -296,22 +296,46 @@ export const questions: Question[] = [
     id: "swagger-lightweight-1",
     moduleId: "module-4-swagger",
     type: "multiple",
-    title: "为什么当前 V1 采用轻量内置文档？",
+    title: "为什么当前 V1 采用 CDN Swagger UI？",
     prompt: "关于 FeedLab V1 当前 Swagger/OpenAPI 实现，哪些说法合理？",
     choices: [
       { id: "A", text: "不依赖 swag CLI，降低本地和 VPS 环境要求" },
       { id: "B", text: "仍然提供标准 OpenAPI JSON，便于导入接口工具" },
       { id: "C", text: "它会自动替你生成数据库表" },
-      { id: "D", text: "后续如果接口很多，可以再切换到 swag 注释生成流程" }
+      { id: "D", text: "CDN 方式减少仓库静态文件体积，但生产环境无法访问 CDN 时应改成本地静态资源" }
     ],
     correctAnswers: ["A", "B", "D"],
-    referenceAnswer: "轻量内置文档适合 V1：无需额外 CLI，部署简单，同时保留 OpenAPI JSON 的标准化能力。后续接口增多后，可以再引入 swag CLI 自动生成。",
+    referenceAnswer: "V1 使用手写 OpenAPI JSON + CDN Swagger UI：后端不新增 Go 依赖，页面又能支持 Try it out。缺点是页面依赖外网 CDN，生产环境如果网络不可控，应把 Swagger UI 静态资源 vendoring 到项目中。",
     explanation: "这是阶段性取舍。V1 重点是跑通闭环和展示能力，不必一开始把工具链复杂度拉满。",
     whyOthersWrong: {
       C: "数据库表由 GORM AutoMigrate 创建，和 OpenAPI 文档无关。"
     },
     keyPoints: ["轻量部署", "标准 JSON", "工具可导入", "后续可演进"],
-    interviewTips: ["可以补一句：如果团队要求统一 Swagger UI，可以把 doc.json 接到官方 Swagger UI。"],
+    interviewTips: ["可以补一句：V1 用 CDN 快速落地；真正上线时，我会考虑把 Swagger UI 静态文件放到本地，避免 CDN 不可用。"],
     codeRefs: ["backend/internal/swagger/swagger.go"]
+  },
+  {
+    id: "swagger-bearer-1",
+    moduleId: "module-4-swagger",
+    type: "single",
+    title: "为什么 Swagger 文档需要 BearerAuth？",
+    prompt: "在 OpenAPI components.securitySchemes 中定义 BearerAuth，主要是为了解决什么？",
+    choices: [
+      { id: "A", text: "让 Swagger UI 知道哪些接口需要 JWT，并在请求时带上 Authorization Header" },
+      { id: "B", text: "让 MySQL 自动校验用户密码" },
+      { id: "C", text: "让 Redis 自动缓存帖子详情" },
+      { id: "D", text: "让所有接口都不需要登录" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "BearerAuth 描述 JWT Bearer 鉴权方式。Swagger UI 看到 security 配置后，会显示 Authorize 按钮，并在需要鉴权的接口请求中带上 Authorization: Bearer <token>。",
+    explanation: "OpenAPI 不只描述 URL 和请求体，也描述鉴权方式。这样接口调试页面才能正确模拟真实客户端请求。",
+    whyOthersWrong: {
+      B: "密码校验发生在登录 Service 中，不由 Swagger 决定。",
+      C: "Redis 缓存策略和 OpenAPI 鉴权声明无关。",
+      D: "BearerAuth 是为了标记需要登录的接口，不是取消登录。"
+    },
+    keyPoints: ["securitySchemes", "Bearer token", "Authorize 按钮", "Authorization Header"],
+    interviewTips: ["回答时可以联系用户模块：登录拿到 access_token，再在 Swagger UI Authorize 中填入 token。"],
+    codeRefs: ["backend/internal/swagger/swagger.go", "backend/internal/middleware/auth.go"]
   }
 ];

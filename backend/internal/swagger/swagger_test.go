@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,19 @@ func TestSwaggerDocRoute(t *testing.T) {
 			t.Fatalf("expected path %s in openapi document", path)
 		}
 	}
+
+	posts, ok := paths["/api/v1/posts"].(map[string]any)
+	if !ok {
+		t.Fatal("expected /api/v1/posts object")
+	}
+	list, ok := posts["get"].(map[string]any)
+	if !ok {
+		t.Fatal("expected GET /api/v1/posts operation")
+	}
+	parameters, ok := list["parameters"].([]any)
+	if !ok || len(parameters) != 2 {
+		t.Fatalf("expected page query parameters, got %#v", list["parameters"])
+	}
 }
 
 func TestSwaggerIndexRoute(t *testing.T) {
@@ -55,5 +69,8 @@ func TestSwaggerIndexRoute(t *testing.T) {
 	}
 	if rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
 		t.Fatalf("unexpected content type: %s", rec.Header().Get("Content-Type"))
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "SwaggerUIBundle") || !strings.Contains(body, "/swagger/doc.json") {
+		t.Fatal("expected swagger ui html to load /swagger/doc.json")
 	}
 }

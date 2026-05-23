@@ -102,20 +102,37 @@ func schemas() gin.H {
 func paths() gin.H {
 	return gin.H{
 		"/healthz": gin.H{
-			"get": operation("health", "Health check", "Check API, MySQL and Redis availability.", nil, nil, responseMap("200", "success", "500", "dependency unhealthy")),
+			"get": operation("health", "Health check", "Check API, MySQL and Redis availability.", nil, nil, nil, responseMap("200", "success", "500", "dependency unhealthy")),
 		},
 		"/api/v1/auth/register": gin.H{
-			"post": operation("auth", "Register user", "Create a FeedLab user account with bcrypt password hashing.", schemaRef("RegisterRequest"), nil, responseMap("201", "created", "400", "invalid request", "409", "resource conflict")),
+			"post": operation("auth", "Register user", "Create a FeedLab user account with bcrypt password hashing.", schemaRef("RegisterRequest"), gin.H{
+				"username": "alice",
+				"email":    "alice@example.com",
+				"password": "secret123",
+				"nickname": "Alice",
+			}, nil, responseMap("201", "created", "400", "invalid request", "409", "resource conflict")),
 		},
 		"/api/v1/auth/login": gin.H{
-			"post": operation("auth", "Login user", "Login with email and password, then return an access token.", schemaRef("LoginRequest"), nil, responseMap("200", "success", "400", "invalid request", "401", "invalid credentials")),
+			"post": operation("auth", "Login user", "Login with email and password, then return an access token.", schemaRef("LoginRequest"), gin.H{
+				"email":    "alice@example.com",
+				"password": "secret123",
+			}, nil, responseMap("200", "success", "400", "invalid request", "401", "invalid credentials")),
 		},
 		"/api/v1/users/me": gin.H{
-			"get": operation("users", "Current user profile", "Return the current user profile from JWT context.", nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
+			"get": operation("users", "Current user profile", "Return the current user profile from JWT context.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
 		},
 		"/api/v1/posts": gin.H{
-			"get":  operation("posts", "List published posts", "List published posts by page and page_size.", nil, nil, responseMap("200", "success", "400", "invalid query")),
-			"post": operation("posts", "Create post", "Create a post for the current user and update user post count in one transaction.", schemaRef("CreatePostRequest"), bearerSecurity(), responseMap("201", "created", "400", "invalid request", "401", "invalid token")),
+			"get": operationWithParameters("posts", "List published posts", "List published posts by page and page_size.", nil, responseMap("200", "success", "400", "invalid query"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+			"post": operation("posts", "Create post", "Create a post for the current user and update user post count in one transaction.", schemaRef("CreatePostRequest"), gin.H{
+				"title":        "FeedLab 第一篇帖子",
+				"content":      "这是 V1 帖子模块创建的内容。",
+				"cover_url":    "",
+				"content_type": "article",
+				"status":       "published",
+			}, bearerSecurity(), responseMap("201", "created", "400", "invalid request", "401", "invalid token")),
 		},
 		"/api/v1/posts/{id}": gin.H{
 			"get":    operationWithID("posts", "Post detail", "Return a published post detail.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
@@ -124,7 +141,7 @@ func paths() gin.H {
 	}
 }
 
-func operation(tag string, summary string, description string, requestBody gin.H, security any, responses gin.H) gin.H {
+func operation(tag string, summary string, description string, requestBody gin.H, requestExample any, security any, responses gin.H) gin.H {
 	op := gin.H{
 		"tags":        []string{tag},
 		"summary":     summary,
@@ -135,7 +152,10 @@ func operation(tag string, summary string, description string, requestBody gin.H
 		op["requestBody"] = gin.H{
 			"required": true,
 			"content": gin.H{
-				"application/json": gin.H{"schema": requestBody},
+				"application/json": gin.H{
+					"schema":  requestBody,
+					"example": requestExample,
+				},
 			},
 		}
 	}
@@ -145,8 +165,14 @@ func operation(tag string, summary string, description string, requestBody gin.H
 	return op
 }
 
+func operationWithParameters(tag string, summary string, description string, security any, responses gin.H, parameters []gin.H) gin.H {
+	op := operation(tag, summary, description, nil, nil, security, responses)
+	op["parameters"] = parameters
+	return op
+}
+
 func operationWithID(tag string, summary string, description string, security any, responses gin.H) gin.H {
-	op := operation(tag, summary, description, nil, security, responses)
+	op := operation(tag, summary, description, nil, nil, security, responses)
 	op["parameters"] = []gin.H{
 		{
 			"name":        "id",
@@ -157,6 +183,24 @@ func operationWithID(tag string, summary string, description string, security an
 		},
 	}
 	return op
+}
+
+func queryParameter(name string, description string, example int, minimum int, maximum int) gin.H {
+	schema := gin.H{
+		"type":    "integer",
+		"minimum": minimum,
+		"example": example,
+	}
+	if maximum > 0 {
+		schema["maximum"] = maximum
+	}
+	return gin.H{
+		"name":        name,
+		"in":          "query",
+		"required":    false,
+		"description": description,
+		"schema":      schema,
+	}
 }
 
 func responseMap(values ...string) gin.H {
@@ -187,66 +231,40 @@ const indexHTML = `<!doctype html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FeedLab Swagger Docs</title>
+  <title>FeedLab Swagger UI</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css" />
   <style>
-    :root { color: #17202a; background: #edf1f6; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: linear-gradient(135deg, #f7f9fc 0%, #e7ecf3 100%); }
-    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 40px; }
-    header { padding: 28px; border: 1px solid rgba(38,54,76,.12); border-radius: 8px; background: rgba(255,255,255,.86); box-shadow: 0 24px 60px rgba(37,52,72,.12); }
-    h1 { margin: 8px 0 10px; font-size: clamp(34px, 5vw, 64px); line-height: 1; letter-spacing: 0; }
-    p { color: #5d6c7f; line-height: 1.7; }
-    a { color: #1e64d8; font-weight: 800; }
-    .eyebrow { color: #667589; font-size: 12px; font-weight: 900; text-transform: uppercase; }
-    .toolbar { display: flex; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
-    .toolbar a, .toolbar button { min-height: 42px; padding: 0 16px; border: 1px solid rgba(38,54,76,.14); border-radius: 8px; background: #fff; color: #263444; text-decoration: none; font: inherit; font-weight: 800; cursor: pointer; }
-    .docs { display: grid; gap: 14px; }
-    .operation { border: 1px solid rgba(38,54,76,.12); border-radius: 8px; background: rgba(255,255,255,.9); overflow: hidden; box-shadow: 0 18px 44px rgba(37,52,72,.08); }
-    .operation summary { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 14px; align-items: center; padding: 18px; cursor: pointer; }
-    .method { display: inline-grid; place-items: center; min-height: 34px; border-radius: 8px; color: white; font-weight: 900; }
-    .GET { background: #2f7dff; } .POST { background: #00a878; } .DELETE { background: #e05a47; }
-    .path { font-family: "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; font-weight: 800; }
-    .details { padding: 0 18px 18px 116px; color: #536276; }
-    .tag { display: inline-block; margin-right: 8px; padding: 4px 8px; border-radius: 999px; background: #eef2f7; color: #536276; font-size: 12px; font-weight: 800; }
-    code, pre { font-family: "SFMono-Regular", Consolas, monospace; }
-    pre { overflow: auto; padding: 14px; border-radius: 8px; background: #17202a; color: #edf1f6; }
+    body { margin: 0; background: #f7f9fc; }
+    .topbar { display: none; }
+    .swagger-ui .info { margin: 28px 0; }
+    .swagger-ui .scheme-container { border-radius: 8px; box-shadow: none; border: 1px solid rgba(38,54,76,.12); }
+    .notice { padding: 12px 28px; color: #536276; background: #eef4ff; border-bottom: 1px solid rgba(38,54,76,.1); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .notice strong { color: #17202a; }
   </style>
 </head>
 <body>
-  <main>
-    <header>
-      <span class="eyebrow">OpenAPI 3.0</span>
-      <h1>FeedLab Swagger Docs</h1>
-      <p>V1 API 文档，覆盖健康检查、用户注册登录、JWT 鉴权、帖子发布/列表/详情/删除。原始 OpenAPI JSON 可用于导入 Postman、Apifox 或 Swagger UI。</p>
-      <div class="toolbar">
-        <a href="/swagger/doc.json" target="_blank" rel="noreferrer">查看 doc.json</a>
-        <button id="expand">展开全部接口</button>
-      </div>
-    </header>
-    <section class="docs" id="docs"></section>
-  </main>
+  <div class="notice">
+    <strong>FeedLab V1 API:</strong>
+    点击接口右侧的 Try it out 可以直接测试。登录后复制 access_token，点击 Authorize，粘贴 token 即可，Swagger UI 会自动加 Bearer 前缀。
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
   <script>
-    async function loadDocs() {
-      const spec = await fetch('/swagger/doc.json').then((res) => res.json());
-      const docs = document.querySelector('#docs');
-      const methods = ['get', 'post', 'put', 'delete', 'patch'];
-      for (const [path, ops] of Object.entries(spec.paths)) {
-        for (const method of methods) {
-          const op = ops[method];
-          if (!op) continue;
-          const detail = document.createElement('details');
-          detail.className = 'operation';
-          const upper = method.toUpperCase();
-          detail.innerHTML = '<summary><span class="method ' + upper + '">' + upper + '</span><span><span class="path">' + path + '</span><br><strong>' + op.summary + '</strong></span></summary>' +
-            '<div class="details"><span class="tag">' + (op.tags || []).join(', ') + '</span><p>' + op.description + '</p><strong>Responses</strong><pre>' + JSON.stringify(op.responses, null, 2) + '</pre></div>';
-          docs.appendChild(detail);
-        }
-      }
-      document.querySelector('#expand').addEventListener('click', () => {
-        document.querySelectorAll('details').forEach((item) => item.open = true);
+    window.onload = function () {
+      window.ui = SwaggerUIBundle({
+        url: "/swagger/doc.json",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        layout: "StandaloneLayout"
       });
-    }
-    loadDocs();
+    };
   </script>
 </body>
 </html>`

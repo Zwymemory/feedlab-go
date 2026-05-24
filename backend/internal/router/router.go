@@ -45,14 +45,17 @@ func New(deps Dependencies) *gin.Engine {
 	userRepository := repository.NewUserRepository(deps.MySQL)
 	postRepository := repository.NewPostRepository(deps.MySQL)
 	postLikeRepository := repository.NewPostLikeRepository(deps.MySQL)
+	commentRepository := repository.NewCommentRepository(deps.MySQL)
 	authService := service.NewAuthService(userRepository, tokenManager)
 	userService := service.NewUserService(userRepository)
 	postService := service.NewPostService(postRepository, userRepository)
 	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository)
+	commentService := service.NewCommentService(commentRepository, postRepository)
 	authController := controller.NewAuthController(authService)
 	userController := controller.NewUserController(userService)
 	postController := controller.NewPostController(postService)
 	likeController := controller.NewLikeController(likeService)
+	commentController := controller.NewCommentController(commentService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 
 	engine.GET("/healthz", healthController.Health)
@@ -77,6 +80,12 @@ func New(deps Dependencies) *gin.Engine {
 	posts.POST("/:id/like", authMiddleware.RequireAuth(), likeController.LikePost)
 	posts.DELETE("/:id/like", authMiddleware.RequireAuth(), likeController.UnlikePost)
 	posts.GET("/:id/liked", authMiddleware.RequireAuth(), likeController.IsPostLiked)
+	posts.POST("/:id/comments", authMiddleware.RequireAuth(), commentController.Create)
+	posts.GET("/:id/comments", commentController.ListPostComments)
+
+	comments := api.Group("/comments")
+	comments.GET("/:id/replies", commentController.ListReplies)
+	comments.DELETE("/:id", authMiddleware.RequireAuth(), commentController.Delete)
 
 	return engine
 }

@@ -10,7 +10,7 @@ import (
 	"feedlab/backend/internal/config"
 )
 
-func TestLikeRoutesRegister(t *testing.T) {
+func TestAuthenticatedInteractionRoutesRegister(t *testing.T) {
 	engine := New(Dependencies{
 		Config: &config.Config{
 			Server: config.ServerConfig{Mode: "test"},
@@ -19,11 +19,22 @@ func TestLikeRoutesRegister(t *testing.T) {
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/posts/1/liked", nil)
-	rec := httptest.NewRecorder()
-	engine.ServeHTTP(rec, req)
+	routes := []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/posts/1/liked"},
+		{method: http.MethodPost, path: "/api/v1/posts/1/comments"},
+		{method: http.MethodDelete, path: "/api/v1/comments/1"},
+	}
 
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected liked route to require auth, got %d", rec.Code)
+	for _, route := range routes {
+		req := httptest.NewRequest(route.method, route.path, nil)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected %s %s to require auth, got %d", route.method, route.path, rec.Code)
+		}
 	}
 }

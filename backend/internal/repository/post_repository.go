@@ -117,3 +117,17 @@ func (r *PostRepository) GetPublishedLikeCount(ctx context.Context, postID uint6
 	}
 	return post.LikeCount, nil
 }
+
+func (r *PostRepository) IncrementCommentCount(ctx context.Context, postID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.Post{}).
+		Where("id = ? AND status = ?", postID, "published").
+		UpdateColumn("comment_count", gorm.Expr("CASE WHEN comment_count + ? < 0 THEN 0 ELSE comment_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 点赞 -> 取消点赞 -> 删除 -> Swagger 文档。",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 评论 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -31,6 +31,14 @@
     },
     {
       "key": "post_id",
+      "value": ""
+    },
+    {
+      "key": "comment_id",
+      "value": ""
+    },
+    {
+      "key": "reply_id",
       "value": ""
     }
   ],
@@ -456,7 +464,296 @@
       ]
     },
     {
-      "name": "Module 5 - Cleanup",
+      "name": "Module 5 - Comments",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/comments - root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('comment_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是通过 Postman 创建的一级评论。\",\n  \"parent_id\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "发布一级评论。Test 脚本会保存 comment_id，posts.comment_count 应增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - reply",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('reply_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是通过 Postman 创建的二级回复。\",\n  \"parent_id\": {{comment_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "回复刚创建的一级评论。Test 脚本会保存 reply_id，posts.comment_count 应再次增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id/comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看帖子一级评论列表。预期包含 comment_id，不包含二级回复。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/comments/:id/replies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{comment_id}}/replies?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{comment_id}}",
+                "replies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看一级评论下的二级回复。预期包含 reply_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id - reply",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{reply_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{reply_id}}"
+              ]
+            },
+            "description": "软删除刚创建的回复。预期 deleted_count=1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - reply before cascade",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('reply_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是删除一级评论前重新创建的回复。\",\n  \"parent_id\": {{comment_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "重新创建一条回复，用于测试删除一级评论时级联软删除未删除回复。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id - root cascade",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{comment_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{comment_id}}"
+              ]
+            },
+            "description": "软删除一级评论，并级联软删除它下面未删除的回复。预期 deleted_count 至少为 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id after comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "查看帖子详情，确认 comment_count 已按创建和删除评论的实际数量维护。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 6 - Cleanup",
       "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
@@ -514,7 +811,7 @@
       ]
     },
     {
-      "name": "Module 6 - Swagger",
+      "name": "Module 7 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",

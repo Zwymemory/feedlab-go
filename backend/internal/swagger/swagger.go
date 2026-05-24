@@ -42,6 +42,7 @@ func spec() gin.H {
 			{"name": "users", "description": "Current user APIs"},
 			{"name": "posts", "description": "Post publishing and reading"},
 			{"name": "likes", "description": "Post like interactions"},
+			{"name": "comments", "description": "Post comments and replies"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -95,6 +96,14 @@ func schemas() gin.H {
 				"cover_url":    gin.H{"type": "string", "example": ""},
 				"content_type": gin.H{"type": "string", "enum": []string{"article", "image", "video"}, "example": "article"},
 				"status":       gin.H{"type": "string", "enum": []string{"draft", "published"}, "example": "published"},
+			},
+		},
+		"CreateCommentRequest": gin.H{
+			"type":     "object",
+			"required": []string{"content"},
+			"properties": gin.H{
+				"content":   gin.H{"type": "string", "maxLength": 1000, "example": "这是一条评论。"},
+				"parent_id": gin.H{"type": "integer", "format": "uint64", "example": 0},
 			},
 		},
 	}
@@ -152,6 +161,25 @@ func paths() gin.H {
 		"/api/v1/posts/{id}/liked": gin.H{
 			"get": operationWithID("likes", "Check post liked", "Check whether the current user has liked a published post.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
 		},
+		"/api/v1/posts/{id}/comments": gin.H{
+			"post": operationWithIDAndBody("comments", "Create comment", "Create a root comment or second-level reply for a published post.", schemaRef("CreateCommentRequest"), gin.H{
+				"content":   "这是一条评论。",
+				"parent_id": 0,
+			}, bearerSecurity(), responseMap("201", "created", "400", "invalid request", "401", "invalid token", "404", "not found")),
+			"get": operationWithIDAndParameters("comments", "List post comments", "List root comments for a published post.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+		},
+		"/api/v1/comments/{id}/replies": gin.H{
+			"get": operationWithIDAndParameters("comments", "List comment replies", "List second-level replies for a root comment.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+		},
+		"/api/v1/comments/{id}": gin.H{
+			"delete": operationWithID("comments", "Delete comment", "Soft delete a comment. Deleting a root comment also soft deletes its visible replies.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),
+		},
 	}
 }
 
@@ -187,6 +215,12 @@ func operationWithParameters(tag string, summary string, description string, sec
 
 func operationWithID(tag string, summary string, description string, security any, responses gin.H) gin.H {
 	op := operation(tag, summary, description, nil, nil, security, responses)
+	op["parameters"] = []gin.H{pathIDParameter()}
+	return op
+}
+
+func operationWithIDAndBody(tag string, summary string, description string, requestBody gin.H, requestExample any, security any, responses gin.H) gin.H {
+	op := operation(tag, summary, description, requestBody, requestExample, security, responses)
 	op["parameters"] = []gin.H{pathIDParameter()}
 	return op
 }

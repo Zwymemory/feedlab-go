@@ -35,6 +35,13 @@ export const modules: QuizModule[] = [
     subtitle: "唯一索引、幂等、事务、计数维护",
     accent: "#d9902f",
     summary: "理解互动系统的第一块拼图：用数据库唯一索引兜底幂等，用事务维护点赞关系和 like_count。"
+  },
+  {
+    id: "module-v2-comments",
+    title: "V2 模块 2：评论系统",
+    subtitle: "两层评论、软删除、事务、comment_count",
+    accent: "#2f9f8f",
+    summary: "理解评论系统如何用 parent_id 表达层级，用软删除保留内容记录，并用事务维护帖子评论数。"
   }
 ];
 
@@ -438,5 +445,111 @@ export const questions: Question[] = [
     keyPoints: ["JWT 中间件", "Controller 取 id 和 user_id", "Service 校验 published", "事务", "唯一索引", "like_count"],
     interviewTips: ["面试时可以主动说：重复点赞时插入 RowsAffected=0，所以不会重复加 like_count。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/like_controller.go", "backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "comments-parent-1",
+    moduleId: "module-v2-comments",
+    type: "single",
+    title: "parent_id 如何表达评论层级？",
+    prompt: "FeedLab V2 评论表中 parent_id 的设计含义是什么？",
+    choices: [
+      { id: "A", text: "parent_id=0 表示一级评论，parent_id>0 表示回复某条一级评论" },
+      { id: "B", text: "parent_id 永远等于 post_id" },
+      { id: "C", text: "parent_id 用来保存 JWT 用户 ID" },
+      { id: "D", text: "parent_id 只用于物理删除评论" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "parent_id=0 表示这条评论直接挂在帖子下面，是一级评论；parent_id>0 表示这条评论是某个一级评论的二级回复。Service 会校验被回复的 parent comment 必须属于同一篇帖子，并且它本身必须是一级评论，从而限制只支持两层评论。",
+    explanation: "这是内容社区里常见的轻量层级建模。V2 不做无限嵌套，能让列表接口、计数和删除逻辑都更清晰。",
+    whyOthersWrong: {
+      B: "评论所属帖子由 post_id 表达，parent_id 表达评论之间的父子关系。",
+      C: "当前登录用户来自 JWT 中间件写入的上下文，不存在 parent_id 里。",
+      D: "parent_id 主要用于层级关系和级联软删除，不是物理删除标记。"
+    },
+    keyPoints: ["一级评论 parent_id=0", "二级回复 parent_id>0", "限制两层", "校验同一帖子"],
+    interviewTips: ["可以补一句：无限嵌套会让查询、分页和删除复杂很多，所以 V2 先用两层结构跑通社区评论闭环。"],
+    codeRefs: ["backend/internal/model/comment.go", "backend/internal/service/comment_service.go"]
+  },
+  {
+    id: "comments-transaction-1",
+    moduleId: "module-v2-comments",
+    type: "short",
+    title: "发布评论为什么需要事务？",
+    prompt: "发布评论时既要插入 comments，又要更新 posts.comment_count。为什么这两个操作必须放在事务里？",
+    referenceAnswer: "因为评论记录和帖子评论数描述的是同一个业务事实。如果 comments 插入成功但 comment_count 增加失败，帖子详情展示的评论数就会和真实评论列表不一致。事务保证插入评论和更新计数同时成功，任何一步失败都回滚。",
+    explanation: "comment_count 是冗余计数，读帖子详情时很方便，但写入时要承担维护一致性的责任。凡是多个表围绕一个业务动作一起变化，都应该优先考虑事务。",
+    keyPoints: ["跨表更新", "冗余计数", "原子性", "失败回滚", "数据一致性"],
+    interviewTips: ["回答时可以类比点赞模块：关系表和 count 字段要么一起变，要么都不变。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "comments-delete-1",
+    moduleId: "module-v2-comments",
+    type: "multiple",
+    title: "删除一级评论时应该发生什么？",
+    prompt: "关于 DELETE /api/v1/comments/:id 删除一级评论，哪些行为符合当前设计？",
+    choices: [
+      { id: "A", text: "软删除这条一级评论，保留 deleted_at 记录" },
+      { id: "B", text: "级联软删除它下面所有未删除的二级回复" },
+      { id: "C", text: "按实际软删除数量扣减 posts.comment_count" },
+      { id: "D", text: "任何登录用户都能删除别人的评论" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "删除一级评论时，会软删除一级评论本身和它下面未删除的回复，deleted_count 返回实际删除数量，并用这个数量扣减帖子 comment_count。权限上只有评论作者或 admin 能删除。",
+    explanation: "级联软删除能保证前台不再看到已经被删除的讨论串，同时保留数据用于审计、排错或后续后台能力。",
+    whyOthersWrong: {
+      D: "删除是写操作，必须做权限控制；当前只允许作者或 admin。"
+    },
+    keyPoints: ["软删除", "级联回复", "deleted_count", "comment_count 扣减", "作者或 admin"],
+    interviewTips: ["可以主动说：删除回复时只删回复自己；删除一级评论时才会级联处理它下面的回复。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comments-reply-to-user-1",
+    moduleId: "module-v2-comments",
+    type: "single",
+    title: "reply_to_user_id 为什么由后端设置？",
+    prompt: "发布回复时，reply_to_user_id 不让前端传，而是后端根据 parent comment 自动设置。核心原因是什么？",
+    choices: [
+      { id: "A", text: "后端能从被回复评论中得到真实作者，避免前端伪造回复对象" },
+      { id: "B", text: "因为 JSON 不能传 user_id" },
+      { id: "C", text: "因为 GORM 不支持 uint64 字段" },
+      { id: "D", text: "因为 reply_to_user_id 必须等于当前登录用户 ID" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "回复谁应该由被回复评论决定，而不是由前端随便提交。Service 查出 parent comment 后，用 parent.UserID 设置 reply_to_user_id，这样后续做通知、展示“回复某人”时更可信。",
+    explanation: "这是后端可信数据边界。前端负责表达用户动作，后端负责根据数据库事实补全关键关系字段。",
+    whyOthersWrong: {
+      B: "JSON 可以传数字字段。",
+      C: "GORM 支持 uint64。",
+      D: "reply_to_user_id 表示被回复的人，current user_id 表示发起回复的人，两者通常不同。"
+    },
+    keyPoints: ["后端可信", "避免伪造", "被回复评论作者", "通知扩展"],
+    interviewTips: ["可以说：V4 接 RabbitMQ 通知时，reply_to_user_id 就可以作为通知接收者依据。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/model/comment.go"]
+  },
+  {
+    id: "comments-flow-1",
+    moduleId: "module-v2-comments",
+    type: "code",
+    title: "发布回复的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/posts/:id/comments 且 parent_id>0 的请求发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，拿到当前 user_id。CommentController 解析 post id、绑定请求体，然后调用 CommentService.Create。Service 先裁剪 content 并确认帖子存在且 published；如果 parent_id>0，就查询 parent comment，校验它属于同一篇帖子、是一级评论并且状态 published，然后把 reply_to_user_id 设置为 parent.UserID。接着开启事务：插入 comments 记录，并调用 PostRepository.IncrementCommentCount 让帖子 comment_count +1。事务成功后再查回新评论，组装 VO 返回。",
+    explanation: "这道题把路由、中间件、Controller、Service、Repository、事务和 VO 都串起来了，是评论模块最适合练习的整体链路题。",
+    keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 业务校验", "两层评论限制", "事务", "VO 返回"],
+    interviewTips: ["回答时不要只说“插入数据库”，要讲清楚 parent comment 校验和 comment_count 维护，这是面试官真正想听的设计点。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/comment_controller.go", "backend/internal/service/comment_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comments-redis-mq-1",
+    moduleId: "module-v2-comments",
+    type: "short",
+    title: "为什么评论模块暂不接 Redis 和 RabbitMQ？",
+    prompt: "V2 评论模块已经能发布、查询和删除，为什么当前仍然不引入 Redis 缓存和 RabbitMQ 通知？",
+    referenceAnswer: "V2 的目标是先把互动业务的关系、权限、事务和计数一致性跑通。评论列表缓存属于读性能优化，适合 V3 在访问量上来后再做；评论通知是异步消息场景，适合 V4 统一接 RabbitMQ。提前引入会增加学习和排错复杂度，反而遮住本模块最核心的业务设计。",
+    explanation: "这是工程分阶段能力。先保证正确性，再做性能和异步化，能让项目演进路径更清楚。",
+    keyPoints: ["先正确再优化", "Redis 属于缓存优化", "RabbitMQ 属于异步通知", "降低 V2 复杂度"],
+    interviewTips: ["可以补一句：README 里明确写了当前不产生 Redis Key，也不投递 MQ，说明这是有意识的阶段性取舍。"],
+    codeRefs: ["README.md", "backend/internal/service/comment_service.go"]
   }
 ];

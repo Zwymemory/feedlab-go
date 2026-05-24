@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 评论 -> 删除 -> Swagger 文档。",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 评论 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -464,7 +464,179 @@
       ]
     },
     {
-      "name": "Module 5 - Comments",
+      "name": "Module 5 - Collects",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/collect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "收藏刚创建的帖子。必须先执行登录和创建帖子。预期 collected=true，collect_count 增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/collect - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "重复收藏幂等测试。预期仍成功，但 collect_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id/collected",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collected",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collected"
+              ]
+            },
+            "description": "查询当前用户是否收藏过该帖子。预期 collected=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/collects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/collects?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "collects"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看当前用户收藏过的 published 帖子列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/collect",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "取消收藏。预期 collected=false，collect_count 只在原本收藏时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/collect - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "重复取消收藏幂等测试。预期仍成功，但 collect_count 不继续减少。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 6 - Comments",
       "item": [
         {
           "name": "POST /api/v1/posts/:id/comments - root",
@@ -753,7 +925,7 @@
       ]
     },
     {
-      "name": "Module 6 - Cleanup",
+      "name": "Module 7 - Cleanup",
       "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
@@ -777,7 +949,7 @@
                 "{{post_id}}"
               ]
             },
-            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。删除后再次点赞该帖子应返回 404。"
+            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。删除后再次点赞或收藏该帖子应返回 404。"
           },
           "response": []
         },
@@ -807,11 +979,38 @@
             "description": "删除帖子后再次点赞，预期返回 40400。"
           },
           "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/collect after delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "删除帖子后再次收藏，预期返回 40400。"
+          },
+          "response": []
         }
       ]
     },
     {
-      "name": "Module 7 - Swagger",
+      "name": "Module 8 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",

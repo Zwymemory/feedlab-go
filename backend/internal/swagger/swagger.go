@@ -42,6 +42,7 @@ func spec() gin.H {
 			{"name": "users", "description": "Current user APIs"},
 			{"name": "posts", "description": "Post publishing and reading"},
 			{"name": "likes", "description": "Post like interactions"},
+			{"name": "collects", "description": "Post collect interactions"},
 			{"name": "comments", "description": "Post comments and replies"},
 		},
 		"components": gin.H{
@@ -137,6 +138,12 @@ func paths() gin.H {
 				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
 			}),
 		},
+		"/api/v1/users/{id}/collects": gin.H{
+			"get": operationWithIDAndParameters("collects", "List user collected posts", "List published posts collected by a user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+		},
 		"/api/v1/posts": gin.H{
 			"get": operationWithParameters("posts", "List published posts", "List published posts by page and page_size.", nil, responseMap("200", "success", "400", "invalid query"), []gin.H{
 				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
@@ -160,6 +167,13 @@ func paths() gin.H {
 		},
 		"/api/v1/posts/{id}/liked": gin.H{
 			"get": operationWithID("likes", "Check post liked", "Check whether the current user has liked a published post.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+		},
+		"/api/v1/posts/{id}/collect": gin.H{
+			"post":   operationWithID("collects", "Collect post", "Collect a published post idempotently and increase collect_count only once.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+			"delete": operationWithID("collects", "Uncollect post", "Cancel a post collect idempotently and decrease collect_count only when a collect existed.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+		},
+		"/api/v1/posts/{id}/collected": gin.H{
+			"get": operationWithID("collects", "Check post collected", "Check whether the current user has collected a published post.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
 		},
 		"/api/v1/posts/{id}/comments": gin.H{
 			"post": operationWithIDAndBody("comments", "Create comment", "Create a root comment or second-level reply for a published post.", schemaRef("CreateCommentRequest"), gin.H{

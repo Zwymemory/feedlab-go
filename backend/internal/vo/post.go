@@ -44,6 +44,12 @@ type LikeStatus struct {
 	LikeCount int64  `json:"like_count"`
 }
 
+type CollectStatus struct {
+	PostID       uint64 `json:"post_id"`
+	Collected    bool   `json:"collected"`
+	CollectCount int64  `json:"collect_count"`
+}
+
 func NewPost(post model.Post) Post {
 	return Post{
 		ID:           post.ID,

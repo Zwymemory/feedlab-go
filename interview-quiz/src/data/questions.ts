@@ -42,6 +42,13 @@ export const modules: QuizModule[] = [
     subtitle: "两层评论、软删除、事务、comment_count",
     accent: "#2f9f8f",
     summary: "理解评论系统如何用 parent_id 表达层级，用软删除保留内容记录，并用事务维护帖子评论数。"
+  },
+  {
+    id: "module-v2-collects",
+    title: "V2 模块 3：帖子收藏",
+    subtitle: "收藏关系、幂等、事务、collect_count",
+    accent: "#b75cff",
+    summary: "理解收藏系统如何复用互动关系表模式，用唯一索引保证幂等，并用事务维护帖子收藏数。"
   }
 ];
 
@@ -551,5 +558,99 @@ export const questions: Question[] = [
     keyPoints: ["先正确再优化", "Redis 属于缓存优化", "RabbitMQ 属于异步通知", "降低 V2 复杂度"],
     interviewTips: ["可以补一句：README 里明确写了当前不产生 Redis Key，也不投递 MQ，说明这是有意识的阶段性取舍。"],
     codeRefs: ["README.md", "backend/internal/service/comment_service.go"]
+  },
+  {
+    id: "collects-vs-likes-1",
+    moduleId: "module-v2-collects",
+    type: "single",
+    title: "收藏和点赞的表结构为什么相似？",
+    prompt: "post_collects 和 post_likes 都使用 post_id + user_id 唯一索引，最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "它们本质都是用户和帖子之间的一条互动关系，同一用户对同一帖子只能有一条记录" },
+      { id: "B", text: "因为 MySQL 不允许普通索引" },
+      { id: "C", text: "因为 JWT 必须读取 post_collects" },
+      { id: "D", text: "因为收藏必须软删除" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "点赞和收藏都是用户与帖子之间的关系表。唯一索引保证同一个 user_id + post_id 组合只存在一次，能防止重复收藏，也能在并发请求下由数据库兜底。",
+    explanation: "这体现了关系建模能力：不同业务动作可能共享相似的数据模型，但响应字段和计数字段不同。",
+    whyOthersWrong: {
+      B: "MySQL 支持普通索引，唯一索引是业务约束选择。",
+      C: "JWT 只负责身份，和收藏关系表没有直接依赖。",
+      D: "当前取消收藏是物理删除关系记录，不使用软删除。"
+    },
+    keyPoints: ["关系表", "唯一索引", "防重复", "并发兜底"],
+    interviewTips: ["可以说：点赞代表态度，收藏代表保存，但数据库层都是 user-post relation。"],
+    codeRefs: ["backend/internal/model/post_collect.go", "backend/internal/model/post_like.go"]
+  },
+  {
+    id: "collects-idempotent-1",
+    moduleId: "module-v2-collects",
+    type: "multiple",
+    title: "收藏接口如何做到幂等？",
+    prompt: "关于 POST /api/v1/posts/:id/collect 和 DELETE /api/v1/posts/:id/collect，哪些说法正确？",
+    choices: [
+      { id: "A", text: "重复收藏仍返回成功，但不重复增加 collect_count" },
+      { id: "B", text: "重复取消收藏仍返回成功，但不继续减少 collect_count" },
+      { id: "C", text: "收藏关系插入成功时才让 posts.collect_count +1" },
+      { id: "D", text: "重复收藏必须返回 409 才叫幂等" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "收藏接口表达的是目标状态：我要收藏或我不再收藏。第一次收藏创建关系并增加计数；重复收藏直接返回 collected=true。取消同理，只有真的删除了关系才扣减计数。",
+    explanation: "幂等设计让按钮重复点击、客户端重试和网络抖动都不会破坏 collect_count。",
+    whyOthersWrong: {
+      D: "幂等并不要求返回 409；当前业务语义更适合重复请求返回成功。"
+    },
+    keyPoints: ["目标状态", "RowsAffected", "不重复计数", "重试安全"],
+    interviewTips: ["回答时强调：Service 根据 Repository 的 created/deleted 布尔值决定是否改 count。"],
+    codeRefs: ["backend/internal/service/collect_service.go", "backend/internal/repository/post_collect_repository.go"]
+  },
+  {
+    id: "collects-transaction-1",
+    moduleId: "module-v2-collects",
+    type: "short",
+    title: "收藏为什么也需要事务？",
+    prompt: "收藏成功时既写 post_collects，又更新 posts.collect_count。为什么这两个操作要放进事务？",
+    referenceAnswer: "因为收藏关系和收藏数是同一业务事实的两种存储。如果 post_collects 插入成功但 collect_count 更新失败，帖子详情里的收藏数就会和真实收藏关系不一致。事务保证两者同时成功或同时回滚。",
+    explanation: "collect_count 是冗余计数，提升读取效率的代价是写入时必须维护一致性。",
+    keyPoints: ["跨表更新", "冗余计数", "事务原子性", "一致性"],
+    interviewTips: ["可以把它和点赞、评论模块串起来讲：凡是关系表和 count 字段一起变，都要考虑事务。"],
+    codeRefs: ["backend/internal/service/collect_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "collects-list-1",
+    moduleId: "module-v2-collects",
+    type: "single",
+    title: "收藏列表为什么只返回 published 帖子？",
+    prompt: "GET /api/v1/users/:id/collects 只返回 published 帖子，主要是为了避免什么问题？",
+    choices: [
+      { id: "A", text: "避免草稿、隐藏或已删除内容通过收藏列表被公开看到" },
+      { id: "B", text: "因为收藏列表不能分页" },
+      { id: "C", text: "因为 GORM 不能 JOIN" },
+      { id: "D", text: "因为 collect_count 必须等于 0" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "收藏列表是公开接口，所以只展示 published 帖子，避免用户过去收藏过的草稿、隐藏内容或已删除内容被别人通过列表看到。",
+    explanation: "公开接口要尊重内容状态。关系存在不等于内容仍然可公开访问。",
+    whyOthersWrong: {
+      B: "当前接口支持 page/page_size 分页。",
+      C: "GORM 支持 JOIN，当前 Repository 就用了 JOIN。",
+      D: "collect_count 是帖子统计字段，不决定列表是否展示。"
+    },
+    keyPoints: ["公开接口", "内容状态", "published", "防止信息泄露"],
+    interviewTips: ["可以补一句：如果以后做用户自己的私有收藏夹，可以另开需要登录的接口。"],
+    codeRefs: ["backend/internal/repository/post_collect_repository.go"]
+  },
+  {
+    id: "collects-flow-1",
+    moduleId: "module-v2-collects",
+    type: "code",
+    title: "收藏请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/posts/:id/collect 请求从路由到数据库发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，把 user_id 写入 Gin Context。CollectController 解析 post id 并读取当前 user_id，然后调用 CollectService。Service 先确认帖子存在且 published，再开启事务：PostCollectRepository 使用唯一索引和 OnConflict DoNothing 插入收藏关系；如果 RowsAffected 表示新插入，就调用 PostRepository.IncrementCollectCount 让 collect_count +1。事务成功后查询当前 collect_count，返回 collected=true。",
+    explanation: "这道题训练你把收藏模块和点赞模块做对比。代码结构相似，但命名、响应字段和 count 字段对应收藏业务。",
+    keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 校验帖子", "事务", "唯一索引", "collect_count"],
+    interviewTips: ["面试时可以说：重复收藏时 RowsAffected=0，因此不会重复增加 collect_count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/collect_controller.go", "backend/internal/service/collect_service.go", "backend/internal/repository/post_collect_repository.go"]
   }
 ];

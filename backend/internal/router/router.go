@@ -45,16 +45,19 @@ func New(deps Dependencies) *gin.Engine {
 	userRepository := repository.NewUserRepository(deps.MySQL)
 	postRepository := repository.NewPostRepository(deps.MySQL)
 	postLikeRepository := repository.NewPostLikeRepository(deps.MySQL)
+	postCollectRepository := repository.NewPostCollectRepository(deps.MySQL)
 	commentRepository := repository.NewCommentRepository(deps.MySQL)
 	authService := service.NewAuthService(userRepository, tokenManager)
 	userService := service.NewUserService(userRepository)
 	postService := service.NewPostService(postRepository, userRepository)
 	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository)
+	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository)
 	commentService := service.NewCommentService(commentRepository, postRepository)
 	authController := controller.NewAuthController(authService)
 	userController := controller.NewUserController(userService)
 	postController := controller.NewPostController(postService)
 	likeController := controller.NewLikeController(likeService)
+	collectController := controller.NewCollectController(collectService)
 	commentController := controller.NewCommentController(commentService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 
@@ -71,6 +74,7 @@ func New(deps Dependencies) *gin.Engine {
 	users.GET("/me", userController.Me)
 
 	api.GET("/users/:id/likes", likeController.ListUserLikes)
+	api.GET("/users/:id/collects", collectController.ListUserCollects)
 
 	posts := api.Group("/posts")
 	posts.GET("", postController.List)
@@ -80,6 +84,9 @@ func New(deps Dependencies) *gin.Engine {
 	posts.POST("/:id/like", authMiddleware.RequireAuth(), likeController.LikePost)
 	posts.DELETE("/:id/like", authMiddleware.RequireAuth(), likeController.UnlikePost)
 	posts.GET("/:id/liked", authMiddleware.RequireAuth(), likeController.IsPostLiked)
+	posts.POST("/:id/collect", authMiddleware.RequireAuth(), collectController.CollectPost)
+	posts.DELETE("/:id/collect", authMiddleware.RequireAuth(), collectController.UncollectPost)
+	posts.GET("/:id/collected", authMiddleware.RequireAuth(), collectController.IsPostCollected)
 	posts.POST("/:id/comments", authMiddleware.RequireAuth(), commentController.Create)
 	posts.GET("/:id/comments", commentController.ListPostComments)
 

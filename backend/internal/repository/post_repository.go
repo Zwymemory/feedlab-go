@@ -118,6 +118,35 @@ func (r *PostRepository) GetPublishedLikeCount(ctx context.Context, postID uint6
 	return post.LikeCount, nil
 }
 
+func (r *PostRepository) IncrementCollectCount(ctx context.Context, postID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.Post{}).
+		Where("id = ? AND status = ?", postID, "published").
+		UpdateColumn("collect_count", gorm.Expr("CASE WHEN collect_count + ? < 0 THEN 0 ELSE collect_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *PostRepository) GetPublishedCollectCount(ctx context.Context, postID uint64) (int64, error) {
+	var post model.Post
+	err := r.db.WithContext(ctx).
+		Select("collect_count").
+		Where("status = ?", "published").
+		First(&post, postID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return post.CollectCount, nil
+}
+
 func (r *PostRepository) IncrementCommentCount(ctx context.Context, postID uint64, delta int64) error {
 	result := r.db.WithContext(ctx).
 		Model(&model.Post{}).

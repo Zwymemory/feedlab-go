@@ -28,6 +28,13 @@ export const modules: QuizModule[] = [
     subtitle: "OpenAPI、接口契约、文档展示",
     accent: "#8a63d2",
     summary: "理解接口文档不是摆设：它定义 API 契约，Swagger UI 还能直接调试接口。"
+  },
+  {
+    id: "module-v2-likes",
+    title: "V2 模块 1：帖子点赞",
+    subtitle: "唯一索引、幂等、事务、计数维护",
+    accent: "#d9902f",
+    summary: "理解互动系统的第一块拼图：用数据库唯一索引兜底幂等，用事务维护点赞关系和 like_count。"
   }
 ];
 
@@ -337,5 +344,99 @@ export const questions: Question[] = [
     keyPoints: ["securitySchemes", "Bearer token", "Authorize 按钮", "Authorization Header"],
     interviewTips: ["回答时可以联系用户模块：登录拿到 access_token，再在 Swagger UI Authorize 中填入 token。"],
     codeRefs: ["backend/internal/swagger/swagger.go", "backend/internal/middleware/auth.go"]
+  },
+  {
+    id: "likes-unique-index-1",
+    moduleId: "module-v2-likes",
+    type: "single",
+    title: "post_likes 为什么要唯一索引？",
+    prompt: "FeedLab V2 的 post_likes 表给 post_id + user_id 建唯一索引，最核心的作用是什么？",
+    choices: [
+      { id: "A", text: "防止同一个用户对同一篇帖子插入多条点赞记录" },
+      { id: "B", text: "让 JWT 自动刷新" },
+      { id: "C", text: "让 Redis 自动缓存点赞状态" },
+      { id: "D", text: "让所有用户只能点赞一篇帖子" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "post_id + user_id 唯一索引用来保证同一个用户对同一篇帖子最多只有一条点赞关系。即使并发请求同时到达，数据库也能兜底防止重复插入。",
+    explanation: "幂等不能只靠代码里的先查再插。高并发下两个请求可能同时判断不存在，所以必须用数据库唯一约束做最终保护。",
+    whyOthersWrong: {
+      B: "JWT 刷新和点赞关系表无关。",
+      C: "V2 点赞模块暂不使用 Redis 点赞状态缓存。",
+      D: "唯一索引限制的是同一 user_id + post_id 组合，不限制用户点赞多篇帖子。"
+    },
+    keyPoints: ["唯一索引", "并发兜底", "防止重复点赞", "幂等基础"],
+    interviewTips: ["可以说：应用层幂等负责语义，数据库唯一索引负责最终一致性兜底。"],
+    codeRefs: ["backend/internal/model/post_like.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "likes-idempotent-1",
+    moduleId: "module-v2-likes",
+    type: "multiple",
+    title: "点赞接口如何做到幂等？",
+    prompt: "关于 POST /api/v1/posts/:id/like 的幂等设计，哪些说法是正确的？",
+    choices: [
+      { id: "A", text: "第一次点赞插入 post_likes 并让 posts.like_count +1" },
+      { id: "B", text: "重复点赞仍返回成功，但不重复增加 like_count" },
+      { id: "C", text: "重复点赞应该返回 409，强制前端自己处理" },
+      { id: "D", text: "数据库唯一索引和 OnConflict DoNothing 可以帮助识别是否真正插入" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "点赞接口按幂等语义设计：用户想表达的是“我已点赞”。如果原来没点赞，就插入并加计数；如果已经点赞，就直接返回 liked=true，不重复增加计数。",
+    explanation: "幂等让客户端重试更安全。网络抖动、按钮重复点击、Postman 重复执行都不会破坏计数。",
+    whyOthersWrong: {
+      C: "重复点赞不是业务冲突，而是同一目标状态的重复请求，因此当前模块返回成功。"
+    },
+    keyPoints: ["目标状态", "重复请求安全", "RowsAffected", "不重复计数"],
+    interviewTips: ["可以举例：用户连续点两次点赞按钮，后端最终状态仍然是一条点赞记录，like_count 只加一次。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "likes-transaction-1",
+    moduleId: "module-v2-likes",
+    type: "short",
+    title: "点赞为什么需要事务？",
+    prompt: "点赞成功时既要写 post_likes，又要更新 posts.like_count。为什么这两个操作要放在一个事务里？",
+    referenceAnswer: "因为点赞关系和帖子点赞数是同一个业务事实的两种存储形式。如果 post_likes 插入成功但 like_count 更新失败，列表展示的点赞数就会和真实关系不一致。事务保证两者同时成功或同时失败。",
+    explanation: "like_count 是冗余计数，读起来快，但写入时必须维护一致性。事务解决的是跨表写入的原子性问题。",
+    keyPoints: ["跨表更新", "冗余计数", "原子性", "失败回滚"],
+    interviewTips: ["回答时强调：真正插入成功才加计数，重复点赞不进入加计数逻辑。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "likes-unlike-1",
+    moduleId: "module-v2-likes",
+    type: "single",
+    title: "重复取消点赞应该怎么处理？",
+    prompt: "用户已经取消点赞后，再次调用 DELETE /api/v1/posts/:id/like，当前设计应该怎么返回？",
+    choices: [
+      { id: "A", text: "返回成功，liked=false，并且不继续减少 like_count" },
+      { id: "B", text: "一定返回 500" },
+      { id: "C", text: "继续把 like_count 减 1" },
+      { id: "D", text: "自动删除帖子" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "取消点赞也是幂等操作。用户表达的是“我不再点赞”。如果原来有点赞关系，就删除并扣计数；如果原来没有，仍返回 liked=false，不再扣计数。",
+    explanation: "幂等取消让客户端重试更安全，也避免 like_count 被重复扣成负数。",
+    whyOthersWrong: {
+      B: "重复取消是可预期请求，不应该当内部错误。",
+      C: "重复扣减会导致计数不一致。",
+      D: "取消点赞只影响点赞关系，不影响帖子本身。"
+    },
+    keyPoints: ["DELETE 幂等", "RowsAffected", "不重复扣计数", "like_count 不小于 0"],
+    interviewTips: ["可以补一句：Repository 删除返回 RowsAffected，Service 只有真的删除了关系才扣计数。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "likes-flow-1",
+    moduleId: "module-v2-likes",
+    type: "code",
+    title: "点赞请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/posts/:id/like 请求从路由到数据库发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，解析 Authorization 并把 user_id 写入 Gin Context。LikeController 解析帖子 id，读取当前 user_id，然后调用 LikeService。Service 先确认帖子存在且 published，再开启事务：PostLikeRepository 用唯一索引和 OnConflict DoNothing 插入点赞关系，如果 RowsAffected 表示新插入，就调用 PostRepository.IncrementLikeCount 让 like_count +1。事务成功后再查询当前 like_count，返回 liked=true。",
+    explanation: "这道题训练你把 Controller、Service、Repository 和事务串起来讲。重点不是背函数名，而是说清每层负责什么。",
+    keyPoints: ["JWT 中间件", "Controller 取 id 和 user_id", "Service 校验 published", "事务", "唯一索引", "like_count"],
+    interviewTips: ["面试时可以主动说：重复点赞时插入 RowsAffected=0，所以不会重复加 like_count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/like_controller.go", "backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
   }
 ];

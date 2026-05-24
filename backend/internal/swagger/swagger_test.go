@@ -35,7 +35,7 @@ func TestSwaggerDocRoute(t *testing.T) {
 	if !ok {
 		t.Fatal("expected paths object")
 	}
-	for _, path := range []string{"/healthz", "/api/v1/auth/register", "/api/v1/posts"} {
+	for _, path := range []string{"/healthz", "/api/v1/auth/register", "/api/v1/posts", "/api/v1/posts/{id}/like", "/api/v1/posts/{id}/liked", "/api/v1/users/{id}/likes"} {
 		if _, ok := paths[path]; !ok {
 			t.Fatalf("expected path %s in openapi document", path)
 		}

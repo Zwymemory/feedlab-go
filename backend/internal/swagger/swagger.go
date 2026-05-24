@@ -31,7 +31,7 @@ func spec() gin.H {
 		"info": gin.H{
 			"title":       "FeedLab API",
 			"version":     "1.0.0",
-			"description": "FeedLab V1 content community backend API.",
+			"description": "FeedLab content community backend API.",
 		},
 		"servers": []gin.H{
 			{"url": "http://localhost:8080", "description": "Local development"},
@@ -41,6 +41,7 @@ func spec() gin.H {
 			{"name": "auth", "description": "Register and login"},
 			{"name": "users", "description": "Current user APIs"},
 			{"name": "posts", "description": "Post publishing and reading"},
+			{"name": "likes", "description": "Post like interactions"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -121,6 +122,12 @@ func paths() gin.H {
 		"/api/v1/users/me": gin.H{
 			"get": operation("users", "Current user profile", "Return the current user profile from JWT context.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
 		},
+		"/api/v1/users/{id}/likes": gin.H{
+			"get": operationWithIDAndParameters("likes", "List user liked posts", "List published posts liked by a user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+		},
 		"/api/v1/posts": gin.H{
 			"get": operationWithParameters("posts", "List published posts", "List published posts by page and page_size.", nil, responseMap("200", "success", "400", "invalid query"), []gin.H{
 				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
@@ -137,6 +144,13 @@ func paths() gin.H {
 		"/api/v1/posts/{id}": gin.H{
 			"get":    operationWithID("posts", "Post detail", "Return a published post detail.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
 			"delete": operationWithID("posts", "Delete post", "Soft delete a post. Only the author or admin can delete it.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),
+		},
+		"/api/v1/posts/{id}/like": gin.H{
+			"post":   operationWithID("likes", "Like post", "Like a published post idempotently and increase like_count only once.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+			"delete": operationWithID("likes", "Unlike post", "Cancel a post like idempotently and decrease like_count only when a like existed.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+		},
+		"/api/v1/posts/{id}/liked": gin.H{
+			"get": operationWithID("likes", "Check post liked", "Check whether the current user has liked a published post.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
 		},
 	}
 }
@@ -173,16 +187,24 @@ func operationWithParameters(tag string, summary string, description string, sec
 
 func operationWithID(tag string, summary string, description string, security any, responses gin.H) gin.H {
 	op := operation(tag, summary, description, nil, nil, security, responses)
-	op["parameters"] = []gin.H{
-		{
-			"name":        "id",
-			"in":          "path",
-			"required":    true,
-			"description": "resource id",
-			"schema":      gin.H{"type": "integer", "format": "uint64", "minimum": 1},
-		},
-	}
+	op["parameters"] = []gin.H{pathIDParameter()}
 	return op
+}
+
+func operationWithIDAndParameters(tag string, summary string, description string, security any, responses gin.H, parameters []gin.H) gin.H {
+	op := operation(tag, summary, description, nil, nil, security, responses)
+	op["parameters"] = append([]gin.H{pathIDParameter()}, parameters...)
+	return op
+}
+
+func pathIDParameter() gin.H {
+	return gin.H{
+		"name":        "id",
+		"in":          "path",
+		"required":    true,
+		"description": "resource id",
+		"schema":      gin.H{"type": "integer", "format": "uint64", "minimum": 1},
+	}
 }
 
 func queryParameter(name string, description string, example int, minimum int, maximum int) gin.H {
@@ -244,7 +266,7 @@ const indexHTML = `<!doctype html>
 </head>
 <body>
   <div class="notice">
-    <strong>FeedLab V1 API:</strong>
+    <strong>FeedLab API:</strong>
     点击接口右侧的 Try it out 可以直接测试。登录后复制 access_token，点击 Authorize，粘贴 token 即可，Swagger UI 会自动加 Bearer 前缀。
   </div>
   <div id="swagger-ui"></div>

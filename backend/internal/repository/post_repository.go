@@ -88,3 +88,32 @@ func (r *PostRepository) SoftDelete(ctx context.Context, id uint64) error {
 	}
 	return nil
 }
+
+func (r *PostRepository) IncrementLikeCount(ctx context.Context, postID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.Post{}).
+		Where("id = ?", postID).
+		UpdateColumn("like_count", gorm.Expr("CASE WHEN like_count + ? < 0 THEN 0 ELSE like_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *PostRepository) GetPublishedLikeCount(ctx context.Context, postID uint64) (int64, error) {
+	var post model.Post
+	err := r.db.WithContext(ctx).
+		Select("like_count").
+		Where("status = ?", "published").
+		First(&post, postID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return post.LikeCount, nil
+}

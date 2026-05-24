@@ -44,12 +44,15 @@ func New(deps Dependencies) *gin.Engine {
 
 	userRepository := repository.NewUserRepository(deps.MySQL)
 	postRepository := repository.NewPostRepository(deps.MySQL)
+	postLikeRepository := repository.NewPostLikeRepository(deps.MySQL)
 	authService := service.NewAuthService(userRepository, tokenManager)
 	userService := service.NewUserService(userRepository)
 	postService := service.NewPostService(postRepository, userRepository)
+	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository)
 	authController := controller.NewAuthController(authService)
 	userController := controller.NewUserController(userService)
 	postController := controller.NewPostController(postService)
+	likeController := controller.NewLikeController(likeService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 
 	engine.GET("/healthz", healthController.Health)
@@ -64,11 +67,16 @@ func New(deps Dependencies) *gin.Engine {
 	users.Use(authMiddleware.RequireAuth())
 	users.GET("/me", userController.Me)
 
+	api.GET("/users/:id/likes", likeController.ListUserLikes)
+
 	posts := api.Group("/posts")
 	posts.GET("", postController.List)
 	posts.GET("/:id", postController.Detail)
 	posts.POST("", authMiddleware.RequireAuth(), postController.Create)
 	posts.DELETE("/:id", authMiddleware.RequireAuth(), postController.Delete)
+	posts.POST("/:id/like", authMiddleware.RequireAuth(), likeController.LikePost)
+	posts.DELETE("/:id/like", authMiddleware.RequireAuth(), likeController.UnlikePost)
+	posts.GET("/:id/liked", authMiddleware.RequireAuth(), likeController.IsPostLiked)
 
 	return engine
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func AutoMigrate(mysql *gorm.DB) error {
-	if err := mysql.AutoMigrate(&model.User{}, &model.Post{}); err != nil {
+	if err := mysql.AutoMigrate(&model.User{}, &model.Post{}, &model.PostLike{}); err != nil {
 		return fmt.Errorf("auto migrate mysql: %w", err)
 	}
 	return nil

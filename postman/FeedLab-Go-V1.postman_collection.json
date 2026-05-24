@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "FeedLab Go V1",
-    "description": "FeedLab V1 Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 删除 -> Swagger 文档。",
+    "name": "FeedLab Go V1 + V2",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 点赞 -> 取消点赞 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -23,6 +23,10 @@
     },
     {
       "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "user_id",
       "value": ""
     },
     {
@@ -112,6 +116,9 @@
                   "const json = pm.response.json();",
                   "if (json.data && json.data.access_token) {",
                   "  pm.collectionVariables.set('access_token', json.data.access_token);",
+                  "}",
+                  "if (json.data && json.data.user && json.data.user.id) {",
+                  "  pm.collectionVariables.set('user_id', json.data.user.id);",
                   "}"
                 ]
               }
@@ -273,7 +280,184 @@
             "description": "查看刚创建的帖子详情，不需要 Token。"
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 4 - Likes",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "点赞刚创建的帖子。必须先执行登录和创建帖子。"
+          },
+          "response": []
         },
+        {
+          "name": "POST /api/v1/posts/:id/like - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "重复点赞幂等测试。预期仍成功，但 like_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id/liked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/liked",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "liked"
+              ]
+            },
+            "description": "查询当前用户是否点赞过该帖子。预期 liked=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/likes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/likes?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "likes"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看当前用户点赞过的 published 帖子列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/like",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "取消点赞。预期 liked=false，like_count 只在原本点赞时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/like - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "重复取消点赞幂等测试。预期仍成功，但 like_count 不继续减少。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 5 - Cleanup",
+      "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
           "request": {
@@ -296,14 +480,41 @@
                 "{{post_id}}"
               ]
             },
-            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。"
+            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。删除后再次点赞该帖子应返回 404。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/like after delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "删除帖子后再次点赞，预期返回 40400。"
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Module 4 - Swagger",
+      "name": "Module 6 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",

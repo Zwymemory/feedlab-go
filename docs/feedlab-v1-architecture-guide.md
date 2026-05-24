@@ -2,6 +2,8 @@
 
 这份文档的目标不是替代 README，而是帮你站在“第一次做后端项目”的视角，把 FeedLab V1 每一层、每个 `.go` 文件之间的关系讲清楚。你可以把它当作面试前的项目讲解稿，也可以当作读代码路线图。
 
+如果你想看更具体的代码块级解释，请读配套文档：[FeedLab Go V1 代码层逐段详解](./feedlab-v1-code-walkthrough.md)。那份文档会逐段拆 `main.go`、`router.go`、Controller、Service、Repository、Model、DTO、VO、中间件、JWT 和 bcrypt。
+
 ## V1 是否已经完成
 
 按当前 V1 计划，FeedLab 后端主流程已经完成并跑通：

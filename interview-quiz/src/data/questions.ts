@@ -49,6 +49,13 @@ export const modules: QuizModule[] = [
     subtitle: "收藏关系、幂等、事务、collect_count",
     accent: "#b75cff",
     summary: "理解收藏系统如何复用互动关系表模式，用唯一索引保证幂等，并用事务维护帖子收藏数。"
+  },
+  {
+    id: "module-v2-follows",
+    title: "V2 模块 4：用户关注",
+    subtitle: "用户关系、禁止自关、双计数事务",
+    accent: "#12a594",
+    summary: "理解关注系统如何建模人与人的关系，用唯一索引兜底幂等，并在事务中维护粉丝数和关注数。"
   }
 ];
 
@@ -652,5 +659,99 @@ export const questions: Question[] = [
     keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 校验帖子", "事务", "唯一索引", "collect_count"],
     interviewTips: ["面试时可以说：重复收藏时 RowsAffected=0，因此不会重复增加 collect_count。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/collect_controller.go", "backend/internal/service/collect_service.go", "backend/internal/repository/post_collect_repository.go"]
+  },
+  {
+    id: "follows-relation-1",
+    moduleId: "module-v2-follows",
+    type: "single",
+    title: "user_follows 如何表达关注关系？",
+    prompt: "user_follows 表中 follower_id 和 followee_id 分别表示什么？",
+    choices: [
+      { id: "A", text: "follower_id 是发起关注的人，followee_id 是被关注的人" },
+      { id: "B", text: "follower_id 是帖子作者，followee_id 是帖子 ID" },
+      { id: "C", text: "两个字段永远相等" },
+      { id: "D", text: "followee_id 用来保存 JWT token" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "follower_id 表示谁在关注别人，followee_id 表示被谁关注。比如用户 1 关注用户 2，就是 follower_id=1, followee_id=2。",
+    explanation: "关注是用户到用户的有方向关系，字段命名要能表达方向，否则粉丝列表和关注列表很容易写反。",
+    whyOthersWrong: {
+      B: "关注关系不直接关联帖子。",
+      C: "两个字段相等代表自己关注自己，当前业务会禁止。",
+      D: "JWT token 不存关系表。"
+    },
+    keyPoints: ["有方向关系", "follower 发起方", "followee 被关注方", "粉丝/关注列表方向"],
+    interviewTips: ["可以画一句：A follow B，A 是 follower，B 是 followee。"],
+    codeRefs: ["backend/internal/model/user_follow.go", "backend/internal/repository/user_follow_repository.go"]
+  },
+  {
+    id: "follows-self-1",
+    moduleId: "module-v2-follows",
+    type: "single",
+    title: "为什么禁止自己关注自己？",
+    prompt: "当前关注模块中，用户关注自己会返回 40000。最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "自己关注自己没有业务意义，还会污染 follower_count 和 following_count" },
+      { id: "B", text: "因为 MySQL 不能存相同数字" },
+      { id: "C", text: "因为 JWT 无法解析自己的用户 ID" },
+      { id: "D", text: "因为公开列表不能返回用户信息" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "关注表达的是人与人之间的关系，自己关注自己没有实际意义。如果允许，会让粉丝数、关注数和列表展示变得奇怪，所以 Service 层直接拦截为 bad request。",
+    explanation: "这是业务规则，不是数据库限制。它应该放在 Service 层，而不是让 Controller 或 Repository 零散处理。",
+    whyOthersWrong: {
+      B: "MySQL 可以存相同数字，禁止自关是业务规则。",
+      C: "JWT 可以解析当前用户 ID。",
+      D: "公开列表返回的是 PublicUser，和自关规则不是一回事。"
+    },
+    keyPoints: ["业务规则", "Service 校验", "计数一致", "避免无意义关系"],
+    interviewTips: ["回答时可以顺带说：唯一索引防重复，Service 防自关，两者解决的问题不同。"],
+    codeRefs: ["backend/internal/service/follow_service.go"]
+  },
+  {
+    id: "follows-transaction-1",
+    moduleId: "module-v2-follows",
+    type: "short",
+    title: "关注为什么要维护两个计数？",
+    prompt: "用户 A 关注用户 B 时，为什么既要更新 A 的 following_count，又要更新 B 的 follower_count？为什么要放在事务里？",
+    referenceAnswer: "A 的 following_count 表示 A 关注了多少人，B 的 follower_count 表示 B 有多少粉丝。一次关注动作会同时改变这两个用户的统计值，也会写入 user_follows 关系表。它们描述同一个业务事实，所以必须放进事务，保证同时成功或同时回滚。",
+    explanation: "关注模块比点赞/收藏多一个点：它不是只改一个目标对象的 count，而是两个用户的 count 都要变。",
+    keyPoints: ["双用户计数", "关系表", "事务原子性", "一致性"],
+    interviewTips: ["可以说：如果关系插入成功但只更新了一个计数，就会出现用户主页统计不一致。"],
+    codeRefs: ["backend/internal/service/follow_service.go", "backend/internal/repository/user_repository.go"]
+  },
+  {
+    id: "follows-public-user-1",
+    moduleId: "module-v2-follows",
+    type: "multiple",
+    title: "为什么关注列表使用 PublicUser？",
+    prompt: "粉丝列表和关注列表是公开接口，使用 PublicUser VO。哪些说法合理？",
+    choices: [
+      { id: "A", text: "公开列表不应该暴露 email、role 等内部或敏感字段" },
+      { id: "B", text: "PublicUser 仍然可以展示 username、nickname、avatar_url、bio 和计数字段" },
+      { id: "C", text: "公开接口就必须返回 password_hash" },
+      { id: "D", text: "VO 可以把数据库模型和接口响应解耦" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "PublicUser 是面向公开展示的用户响应结构，保留主页展示需要的字段，去掉 email、role、password_hash 等不该公开的数据。",
+    explanation: "这是 VO 的价值：同一个 User model 在不同场景下可以有不同的响应形态。",
+    whyOthersWrong: {
+      C: "password_hash 永远不应该返回给前端。"
+    },
+    keyPoints: ["公开接口", "字段最小化", "VO 解耦", "保护隐私"],
+    interviewTips: ["可以和登录返回的 User VO 对比：当前用户看自己可以有 email，公开列表不需要。"],
+    codeRefs: ["backend/internal/vo/user.go", "backend/internal/service/follow_service.go"]
+  },
+  {
+    id: "follows-flow-1",
+    moduleId: "module-v2-follows",
+    type: "code",
+    title: "关注请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/users/:id/follow 请求发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，把当前 user_id 写入 Gin Context。FollowController 解析目标用户 id，并读取当前用户 id，然后调用 FollowService。Service 先禁止自己关注自己，再校验当前用户和目标用户都存在。接着开启事务：UserFollowRepository 用唯一索引和 OnConflict DoNothing 插入关注关系；如果真的新插入，就调用 UserRepository 同时让当前用户 following_count +1、目标用户 follower_count +1。事务成功后查回目标用户粉丝数，返回 followed=true。",
+    explanation: "这道题训练你讲清楚 Controller、Service、Repository、JWT 中间件、事务和幂等之间的关系。",
+    keyPoints: ["JWT 中间件", "禁止自关", "双方用户存在", "唯一索引", "双计数事务", "幂等"],
+    interviewTips: ["面试时可以强调：重复关注时 RowsAffected=0，所以不会重复增加两个计数。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/follow_controller.go", "backend/internal/service/follow_service.go", "backend/internal/repository/user_follow_repository.go"]
   }
 ];

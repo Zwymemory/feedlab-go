@@ -43,6 +43,7 @@ func spec() gin.H {
 			{"name": "posts", "description": "Post publishing and reading"},
 			{"name": "likes", "description": "Post like interactions"},
 			{"name": "collects", "description": "Post collect interactions"},
+			{"name": "follows", "description": "User follow relationships"},
 			{"name": "comments", "description": "Post comments and replies"},
 		},
 		"components": gin.H{
@@ -140,6 +141,25 @@ func paths() gin.H {
 		},
 		"/api/v1/users/{id}/collects": gin.H{
 			"get": operationWithIDAndParameters("collects", "List user collected posts", "List published posts collected by a user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+		},
+		"/api/v1/users/{id}/follow": gin.H{
+			"post":   operationWithID("follows", "Follow user", "Follow a user idempotently and update follower/following counts in one transaction.", bearerSecurity(), responseMap("200", "success", "400", "cannot follow self", "401", "invalid token", "404", "not found")),
+			"delete": operationWithID("follows", "Unfollow user", "Cancel a user follow idempotently and update follower/following counts only when a relationship existed.", bearerSecurity(), responseMap("200", "success", "400", "cannot unfollow self", "401", "invalid token", "404", "not found")),
+		},
+		"/api/v1/users/{id}/followed": gin.H{
+			"get": operationWithID("follows", "Check user followed", "Check whether the current user has followed another user.", bearerSecurity(), responseMap("200", "success", "400", "cannot check self", "401", "invalid token", "404", "not found")),
+		},
+		"/api/v1/users/{id}/followers": gin.H{
+			"get": operationWithIDAndParameters("follows", "List followers", "List public users who follow the target user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
+		},
+		"/api/v1/users/{id}/following": gin.H{
+			"get": operationWithIDAndParameters("follows", "List following", "List public users followed by the target user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
 				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
 				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
 			}),

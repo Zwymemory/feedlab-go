@@ -74,3 +74,31 @@ func (r *UserRepository) IncrementPostCount(ctx context.Context, userID uint64, 
 	}
 	return nil
 }
+
+func (r *UserRepository) IncrementFollowerCount(ctx context.Context, userID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", userID).
+		UpdateColumn("follower_count", gorm.Expr("CASE WHEN follower_count + ? < 0 THEN 0 ELSE follower_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) IncrementFollowingCount(ctx context.Context, userID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where("id = ?", userID).
+		UpdateColumn("following_count", gorm.Expr("CASE WHEN following_count + ? < 0 THEN 0 ELSE following_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

@@ -27,6 +27,9 @@ func TestAuthenticatedInteractionRoutesRegister(t *testing.T) {
 		{method: http.MethodGet, path: "/api/v1/posts/1/collected"},
 		{method: http.MethodPost, path: "/api/v1/posts/1/collect"},
 		{method: http.MethodDelete, path: "/api/v1/posts/1/collect"},
+		{method: http.MethodGet, path: "/api/v1/users/1/followed"},
+		{method: http.MethodPost, path: "/api/v1/users/1/follow"},
+		{method: http.MethodDelete, path: "/api/v1/users/1/follow"},
 		{method: http.MethodPost, path: "/api/v1/posts/1/comments"},
 		{method: http.MethodDelete, path: "/api/v1/comments/1"},
 	}

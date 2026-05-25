@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 评论 -> 删除 -> Swagger 文档。",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -27,6 +27,18 @@
     },
     {
       "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "target_username",
+      "value": ""
+    },
+    {
+      "key": "target_email",
+      "value": ""
+    },
+    {
+      "key": "target_user_id",
       "value": ""
     },
     {
@@ -157,6 +169,61 @@
               ]
             },
             "description": "用注册阶段保存的 email/password 登录。Test 脚本会保存 access_token。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/auth/register - target user",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = Date.now();",
+                  "pm.collectionVariables.set('target_username', `target_${suffix}`);",
+                  "pm.collectionVariables.set('target_email', `target_${suffix}@feedlab.test`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('target_user_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{target_username}}\",\n  \"email\": \"{{target_email}}\",\n  \"password\": \"{{password}}\",\n  \"nickname\": \"FeedLab Target\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "注册第二个目标用户，用于关注模块测试。Test 脚本会保存 target_user_id。"
           },
           "response": []
         },
@@ -636,7 +703,238 @@
       ]
     },
     {
-      "name": "Module 6 - Comments",
+      "name": "Module 6 - Follows",
+      "item": [
+        {
+          "name": "POST /api/v1/users/:id/follow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "当前用户关注目标用户。预期 followed=true，目标用户 follower_count 增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users/:id/follow - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "重复关注幂等测试。预期仍成功，但 follower_count/following_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/followed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/followed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "followed"
+              ]
+            },
+            "description": "查询当前用户是否关注目标用户。预期 followed=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/followers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/followers?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "followers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看目标用户粉丝列表。预期包含当前 user_id，且用户信息不包含 email/role。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/following",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/following?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "following"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看当前用户关注列表。预期包含 target_user_id，且用户信息不包含 email/role。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/users/:id/follow",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "取消关注目标用户。预期 followed=false，计数只在原本关注时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/users/:id/follow - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "重复取消关注幂等测试。预期仍成功，但 follower_count/following_count 不继续减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users/:id/follow - self should fail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "follow"
+              ]
+            },
+            "description": "尝试关注自己。预期返回 400，code=40000。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 7 - Comments",
       "item": [
         {
           "name": "POST /api/v1/posts/:id/comments - root",
@@ -925,7 +1223,7 @@
       ]
     },
     {
-      "name": "Module 7 - Cleanup",
+      "name": "Module 8 - Cleanup",
       "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
@@ -1010,7 +1308,7 @@
       ]
     },
     {
-      "name": "Module 8 - Swagger",
+      "name": "Module 9 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",

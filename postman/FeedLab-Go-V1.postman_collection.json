@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 公开主页 -> 删除 -> Swagger 文档。",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 公开主页 -> 删除 -> Swagger 文档 -> V2 最终验收。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -1655,6 +1655,70 @@
               ]
             },
             "description": "获取 OpenAPI 3.0 JSON 文档，可导入 Postman、Apifox 或 Swagger UI。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 12 - V2 Acceptance",
+      "item": [
+        {
+          "name": "GET /healthz - final",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "V2 完整流程跑完后再次检查 API、MySQL、Redis 是否仍可用。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/posts after cleanup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "posts"
+              ]
+            },
+            "description": "删除帖子后再次查看用户公开帖子列表。预期刚删除的帖子不再出现在 published 列表中。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /swagger/doc.json - V2 final contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/swagger/doc.json",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger",
+                "doc.json"
+              ]
+            },
+            "description": "最终验收 OpenAPI 文档，确认 V2 点赞、评论、收藏、关注、评论点赞和公开主页接口都已纳入文档。"
           },
           "response": []
         }

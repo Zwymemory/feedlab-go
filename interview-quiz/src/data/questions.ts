@@ -70,6 +70,13 @@ export const modules: QuizModule[] = [
     subtitle: "公开 VO、隐私字段、用户帖子列表",
     accent: "#4d7cfe",
     summary: "理解公开主页接口如何复用已有 users/posts 表，用 VO 隔离敏感字段，并只展示 published 内容。"
+  },
+  {
+    id: "module-v2-review",
+    title: "V2 综合复盘",
+    subtitle: "事务、幂等、唯一索引、演进路线",
+    accent: "#111827",
+    summary: "把 V2 的互动系统串起来，练习用项目语言讲清楚一致性、可见性、分层职责和后续 Redis/RabbitMQ 演进。"
   }
 ];
 
@@ -909,5 +916,75 @@ export const questions: Question[] = [
     keyPoints: ["Controller 解析参数", "Service 校验用户存在", "Repository 查询 published", "分页", "VO 返回"],
     interviewTips: ["面试时可以主动强调：这个接口是公开接口，所以不走 JWT 中间件。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/user_controller.go", "backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v2-review-pattern-1",
+    moduleId: "module-v2-review",
+    type: "multiple",
+    title: "V2 互动模块共同模式",
+    prompt: "帖子点赞、帖子收藏、用户关注、评论点赞这些模块有哪些共同设计？",
+    choices: [
+      { id: "A", text: "都使用关系表记录用户和目标资源之间的关系" },
+      { id: "B", text: "都用唯一索引防止重复关系" },
+      { id: "C", text: "都把关系写入和计数字段更新放进事务" },
+      { id: "D", text: "都必须使用 RabbitMQ 才能保证正确性" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "这些互动模块都用关系表表达用户和资源之间的关系，用唯一索引兜底幂等，并在 Service 层事务中同时维护关系表和计数字段。",
+    explanation: "V2 的重点是先用 MySQL 把业务正确性做好。RabbitMQ 更适合后续异步通知，不是 V2 正确性的必要条件。",
+    whyOthersWrong: {
+      D: "V2 没有接 RabbitMQ。当前正确性由 MySQL 唯一索引和事务保证。"
+    },
+    keyPoints: ["关系表", "唯一索引", "幂等", "事务", "计数一致性"],
+    interviewTips: ["面试时可以把点赞、收藏、关注放在一起讲，体现你能抽象项目模式。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/service/collect_service.go", "backend/internal/service/follow_service.go", "backend/internal/service/comment_like_service.go"]
+  },
+  {
+    id: "v2-review-transaction-1",
+    moduleId: "module-v2-review",
+    type: "short",
+    title: "怎么判断一个操作要不要事务？",
+    prompt: "请结合 FeedLab V2 说明：什么操作需要事务，什么操作不需要事务？",
+    referenceAnswer: "如果一个业务动作要同时修改多份数据，并且这些修改必须一起成功或一起失败，就需要事务。例如点赞要写 post_likes 并更新 posts.like_count，关注要写 user_follows 并更新两个用户的计数字段。只读查询如公开主页、列表、是否点赞查询不修改数据，一般不需要事务。",
+    explanation: "事务边界应该跟业务动作边界一致，不是每个函数都开事务，也不是只要查询两张表就必须开事务。",
+    keyPoints: ["多表写入", "原子性", "计数一致性", "只读接口不滥用事务"],
+    interviewTips: ["可以主动举两个正例和两个反例：点赞/关注需要，公开主页/帖子列表不需要。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/service/follow_service.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "v2-review-redis-mq-1",
+    moduleId: "module-v2-review",
+    type: "single",
+    title: "为什么 Redis 和 RabbitMQ 留到后续？",
+    prompt: "FeedLab V2 仍主要依赖 MySQL，没有把互动状态缓存到 Redis，也没有发送 RabbitMQ 通知。最合理的解释是什么？",
+    choices: [
+      { id: "A", text: "V2 先保证业务闭环和数据一致性，Redis/RabbitMQ 属于后续性能和异步化演进" },
+      { id: "B", text: "Gin 项目不能使用 Redis" },
+      { id: "C", text: "GORM 会自动把所有消息发到 RabbitMQ" },
+      { id: "D", text: "只要用了 MySQL，就永远不需要缓存和消息队列" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "V2 的目标是把互动关系、幂等、事务和计数维护做正确。Redis 更适合 V3 做热点缓存和排行榜，RabbitMQ 更适合 V4 做通知和异步事件。",
+    explanation: "这是项目迭代节奏：先正确，再优化，再异步化。面试时这样讲会比一上来堆组件更可信。",
+    whyOthersWrong: {
+      B: "Gin 可以正常使用 Redis。",
+      C: "GORM 不会自动发送 RabbitMQ 消息。",
+      D: "MySQL 是持久化基础，但高并发读、排行榜和通知仍可能需要缓存和消息队列。"
+    },
+    keyPoints: ["阶段演进", "先正确", "Redis 缓存", "RabbitMQ 通知"],
+    interviewTips: ["可以说：我没有为了堆技术而接组件，而是把它们放到合适版本解决合适问题。"],
+    codeRefs: ["README.md", "docs/feedlab-v2-interactions-code-guide.md"]
+  },
+  {
+    id: "v2-review-explain-1",
+    moduleId: "module-v2-review",
+    type: "code",
+    title: "用一段话介绍 V2",
+    prompt: "如果面试官让你介绍 FeedLab V2 的核心设计，你会怎么讲？",
+    referenceAnswer: "FeedLab V2 主要补齐社区互动能力。我把点赞、收藏、关注、评论点赞都设计成关系表加唯一索引，保证重复请求和并发请求下不会产生重复关系。涉及关系表和计数字段的写操作都放在 Service 层事务里完成，比如点赞时同时写 post_likes 并维护 posts.like_count。Controller 只负责 HTTP 参数和统一响应，Repository 只负责 GORM 查询。公开接口使用 VO 控制返回字段，比如 PublicUser 不暴露 email 和 role。V2 先用 MySQL 保证业务正确性，Redis 缓存和 RabbitMQ 通知放到后续版本演进。",
+    explanation: "这是一道表达题。重点不是逐行背代码，而是把设计动机、分层职责、一致性和演进路线讲完整。",
+    keyPoints: ["互动能力", "关系表", "唯一索引", "幂等", "事务", "VO", "Redis/RabbitMQ 演进"],
+    interviewTips: ["回答时控制在 60-90 秒，先讲整体，再举点赞或关注一个具体例子。"],
+    codeRefs: ["docs/feedlab-v2-interactions-code-guide.md", "backend/internal/router/router.go"]
   }
 ];

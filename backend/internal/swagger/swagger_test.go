@@ -35,7 +35,7 @@ func TestSwaggerDocRoute(t *testing.T) {
 	if !ok {
 		t.Fatal("expected paths object")
 	}
-	for _, path := range []string{"/healthz", "/api/v1/auth/register", "/api/v1/posts", "/api/v1/posts/{id}/like", "/api/v1/posts/{id}/liked", "/api/v1/users/{id}/likes", "/api/v1/posts/{id}/collect", "/api/v1/posts/{id}/collected", "/api/v1/users/{id}/collects", "/api/v1/users/{id}/follow", "/api/v1/users/{id}/followed", "/api/v1/users/{id}/followers", "/api/v1/users/{id}/following", "/api/v1/posts/{id}/comments", "/api/v1/comments/{id}/replies", "/api/v1/comments/{id}"} {
+	for _, path := range []string{"/healthz", "/api/v1/auth/register", "/api/v1/posts", "/api/v1/posts/{id}/like", "/api/v1/posts/{id}/liked", "/api/v1/users/{id}/likes", "/api/v1/posts/{id}/collect", "/api/v1/posts/{id}/collected", "/api/v1/users/{id}/collects", "/api/v1/users/{id}/follow", "/api/v1/users/{id}/followed", "/api/v1/users/{id}/followers", "/api/v1/users/{id}/following", "/api/v1/posts/{id}/comments", "/api/v1/comments/{id}/replies", "/api/v1/comments/{id}/like", "/api/v1/comments/{id}/liked", "/api/v1/comments/{id}"} {
 		if _, ok := paths[path]; !ok {
 			t.Fatalf("expected path %s in openapi document", path)
 		}

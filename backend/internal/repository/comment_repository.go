@@ -101,3 +101,32 @@ func (r *CommentRepository) SoftDeleteCascade(ctx context.Context, commentID uin
 	}
 	return result.RowsAffected, nil
 }
+
+func (r *CommentRepository) IncrementLikeCount(ctx context.Context, commentID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.Comment{}).
+		Where("id = ? AND status = ?", commentID, "published").
+		UpdateColumn("like_count", gorm.Expr("CASE WHEN like_count + ? < 0 THEN 0 ELSE like_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *CommentRepository) GetPublishedLikeCount(ctx context.Context, commentID uint64) (int64, error) {
+	var comment model.Comment
+	err := r.db.WithContext(ctx).
+		Select("like_count").
+		Where("status = ?", "published").
+		First(&comment, commentID).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	return comment.LikeCount, nil
+}

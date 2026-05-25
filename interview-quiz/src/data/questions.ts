@@ -56,6 +56,13 @@ export const modules: QuizModule[] = [
     subtitle: "用户关系、禁止自关、双计数事务",
     accent: "#12a594",
     summary: "理解关注系统如何建模人与人的关系，用唯一索引兜底幂等，并在事务中维护粉丝数和关注数。"
+  },
+  {
+    id: "module-v2-comment-likes",
+    title: "V2 模块 5：评论点赞",
+    subtitle: "评论互动、幂等、事务、like_count",
+    accent: "#ef5da8",
+    summary: "理解评论点赞如何复用关系表模式，并把评论可见性、幂等和计数一致性结合起来。"
   }
 ];
 
@@ -753,5 +760,77 @@ export const questions: Question[] = [
     keyPoints: ["JWT 中间件", "禁止自关", "双方用户存在", "唯一索引", "双计数事务", "幂等"],
     interviewTips: ["面试时可以强调：重复关注时 RowsAffected=0，所以不会重复增加两个计数。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/follow_controller.go", "backend/internal/service/follow_service.go", "backend/internal/repository/user_follow_repository.go"]
+  },
+  {
+    id: "comment-likes-relation-1",
+    moduleId: "module-v2-comment-likes",
+    type: "single",
+    title: "comment_likes 为什么要唯一索引？",
+    prompt: "comment_likes 表使用 comment_id + user_id 唯一索引，最核心的作用是什么？",
+    choices: [
+      { id: "A", text: "防止同一个用户对同一条评论插入多条点赞记录" },
+      { id: "B", text: "让评论自动变成一级评论" },
+      { id: "C", text: "让 JWT 自动续期" },
+      { id: "D", text: "让所有评论只能被一个用户点赞" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "comment_id + user_id 唯一索引保证同一用户对同一评论最多只有一条点赞关系。即使重复点击或并发请求同时到达，数据库也能兜底防止重复插入。",
+    explanation: "这和帖子点赞、收藏、关注的思路一样：应用层做幂等语义，数据库唯一索引做最终约束。",
+    whyOthersWrong: {
+      B: "评论层级由 parent_id 决定。",
+      C: "JWT 续期和评论点赞表无关。",
+      D: "唯一索引限制的是同一用户和同一评论的组合，不限制不同用户点赞同一评论。"
+    },
+    keyPoints: ["唯一索引", "关系表", "防重复", "并发兜底"],
+    interviewTips: ["可以说：如果只有先查再插，在并发下仍可能重复，唯一索引才是兜底。"],
+    codeRefs: ["backend/internal/model/comment_like.go", "backend/internal/repository/comment_like_repository.go"]
+  },
+  {
+    id: "comment-likes-transaction-1",
+    moduleId: "module-v2-comment-likes",
+    type: "short",
+    title: "评论点赞为什么需要事务？",
+    prompt: "评论点赞成功时既写 comment_likes，又更新 comments.like_count。为什么这两个操作要放进事务？",
+    referenceAnswer: "评论点赞关系和评论点赞数是同一个业务事实的两种存储。如果 comment_likes 插入成功但 comments.like_count 更新失败，评论展示的点赞数就会和真实点赞关系不一致。事务保证它们同时成功或同时回滚。",
+    explanation: "like_count 是冗余计数，读评论列表时很方便，但写入时必须维护一致性。",
+    keyPoints: ["跨表更新", "冗余计数", "事务原子性", "失败回滚"],
+    interviewTips: ["可以把它和帖子点赞类比：真正插入关系时才加 count，重复点赞不会加。"],
+    codeRefs: ["backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comment-likes-deleted-1",
+    moduleId: "module-v2-comment-likes",
+    type: "single",
+    title: "为什么删除后的评论不能点赞？",
+    prompt: "当前设计中，被软删除的评论再次点赞会返回 40400。这样做主要避免什么问题？",
+    choices: [
+      { id: "A", text: "避免不可见内容继续产生新的互动数据" },
+      { id: "B", text: "因为软删除会删除整张 comments 表" },
+      { id: "C", text: "因为 bcrypt 不能处理评论" },
+      { id: "D", text: "因为公开接口必须返回 500" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "软删除后的评论已经不应该出现在前台，也不应该继续产生点赞关系和 like_count 变化。Service 先确认评论存在且 published，软删除记录会被 GORM 默认过滤，因此返回 40400。",
+    explanation: "这是内容可见性和互动一致性问题：不可见内容不应该被继续互动。",
+    whyOthersWrong: {
+      B: "软删除只写 deleted_at，不会删除整张表。",
+      C: "bcrypt 只用于密码哈希。",
+      D: "资源不可见应返回 404，而不是内部错误。"
+    },
+    keyPoints: ["软删除", "可见性", "published", "40400"],
+    interviewTips: ["可以补一句：删除一级评论会级联软删除回复，这些回复也不能继续点赞。"],
+    codeRefs: ["backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comment-likes-flow-1",
+    moduleId: "module-v2-comment-likes",
+    type: "code",
+    title: "评论点赞请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/comments/:id/like 请求发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，把 user_id 写入 Gin Context。CommentLikeController 解析 comment id 并读取当前 user_id，然后调用 CommentLikeService。Service 先确认评论存在且 published，再开启事务：CommentLikeRepository 用唯一索引和 OnConflict DoNothing 插入点赞关系；如果 RowsAffected 表示新插入，就调用 CommentRepository.IncrementLikeCount 让 comments.like_count +1。事务成功后查询当前 like_count，返回 liked=true。",
+    explanation: "这道题训练你把评论点赞和帖子点赞做类比，同时注意目标对象从 posts 换成 comments。",
+    keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 校验评论", "事务", "唯一索引", "comments.like_count"],
+    interviewTips: ["面试时可以强调：重复点赞 RowsAffected=0，所以不会重复增加 like_count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/comment_like_controller.go", "backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_like_repository.go"]
   }
 ];

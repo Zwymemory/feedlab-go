@@ -45,6 +45,7 @@ func spec() gin.H {
 			{"name": "collects", "description": "Post collect interactions"},
 			{"name": "follows", "description": "User follow relationships"},
 			{"name": "comments", "description": "Post comments and replies"},
+			{"name": "comment_likes", "description": "Comment like interactions"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -210,6 +211,13 @@ func paths() gin.H {
 				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
 				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
 			}),
+		},
+		"/api/v1/comments/{id}/like": gin.H{
+			"post":   operationWithID("comment_likes", "Like comment", "Like a published comment idempotently and increase like_count only once.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+			"delete": operationWithID("comment_likes", "Unlike comment", "Cancel a comment like idempotently and decrease like_count only when a like existed.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+		},
+		"/api/v1/comments/{id}/liked": gin.H{
+			"get": operationWithID("comment_likes", "Check comment liked", "Check whether the current user has liked a published comment.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
 		},
 		"/api/v1/comments/{id}": gin.H{
 			"delete": operationWithID("comments", "Delete comment", "Soft delete a comment. Deleting a root comment also soft deletes its visible replies.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),

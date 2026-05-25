@@ -32,6 +32,12 @@ type DeleteCommentResult struct {
 	DeletedCount int64 `json:"deleted_count"`
 }
 
+type CommentLikeStatus struct {
+	CommentID uint64 `json:"comment_id"`
+	Liked     bool   `json:"liked"`
+	LikeCount int64  `json:"like_count"`
+}
+
 func NewComment(comment model.Comment) Comment {
 	return Comment{
 		ID:            comment.ID,

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 删除 -> Swagger 文档。",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -51,6 +51,10 @@
     },
     {
       "key": "reply_id",
+      "value": ""
+    },
+    {
+      "key": "like_comment_id",
       "value": ""
     }
   ],
@@ -1223,7 +1227,222 @@
       ]
     },
     {
-      "name": "Module 8 - Cleanup",
+      "name": "Module 8 - Comment Likes",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/comments - comment for like",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('like_comment_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是用于评论点赞模块测试的评论。\",\n  \"parent_id\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "为评论点赞模块单独创建一条评论。Test 脚本会保存 like_comment_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/comments/:id/like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "点赞刚创建的评论。预期 liked=true，like_count 增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/comments/:id/like - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "重复点赞幂等测试。预期仍成功，但 like_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/comments/:id/liked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/liked",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "liked"
+              ]
+            },
+            "description": "查询当前用户是否点赞过该评论。预期 liked=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id/like",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "取消评论点赞。预期 liked=false，like_count 只在原本点赞时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id/like - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "重复取消评论点赞幂等测试。预期仍成功，但 like_count 不继续减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id - cleanup like comment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}"
+              ]
+            },
+            "description": "清理评论点赞模块创建的评论。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 9 - Cleanup",
       "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
@@ -1308,7 +1527,7 @@
       ]
     },
     {
-      "name": "Module 9 - Swagger",
+      "name": "Module 10 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",

@@ -48,6 +48,7 @@ func New(deps Dependencies) *gin.Engine {
 	postCollectRepository := repository.NewPostCollectRepository(deps.MySQL)
 	userFollowRepository := repository.NewUserFollowRepository(deps.MySQL)
 	commentRepository := repository.NewCommentRepository(deps.MySQL)
+	commentLikeRepository := repository.NewCommentLikeRepository(deps.MySQL)
 	authService := service.NewAuthService(userRepository, tokenManager)
 	userService := service.NewUserService(userRepository)
 	postService := service.NewPostService(postRepository, userRepository)
@@ -55,6 +56,7 @@ func New(deps Dependencies) *gin.Engine {
 	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository)
 	followService := service.NewFollowService(userFollowRepository, userRepository)
 	commentService := service.NewCommentService(commentRepository, postRepository)
+	commentLikeService := service.NewCommentLikeService(commentLikeRepository, commentRepository)
 	authController := controller.NewAuthController(authService)
 	userController := controller.NewUserController(userService)
 	postController := controller.NewPostController(postService)
@@ -62,6 +64,7 @@ func New(deps Dependencies) *gin.Engine {
 	collectController := controller.NewCollectController(collectService)
 	followController := controller.NewFollowController(followService)
 	commentController := controller.NewCommentController(commentService)
+	commentLikeController := controller.NewCommentLikeController(commentLikeService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 
 	engine.GET("/healthz", healthController.Health)
@@ -100,6 +103,9 @@ func New(deps Dependencies) *gin.Engine {
 
 	comments := api.Group("/comments")
 	comments.GET("/:id/replies", commentController.ListReplies)
+	comments.POST("/:id/like", authMiddleware.RequireAuth(), commentLikeController.LikeComment)
+	comments.DELETE("/:id/like", authMiddleware.RequireAuth(), commentLikeController.UnlikeComment)
+	comments.GET("/:id/liked", authMiddleware.RequireAuth(), commentLikeController.IsCommentLiked)
 	comments.DELETE("/:id", authMiddleware.RequireAuth(), commentController.Delete)
 
 	return engine

@@ -58,8 +58,8 @@ func New(deps Dependencies) *gin.Engine {
 	commentService := service.NewCommentService(commentRepository, postRepository)
 	commentLikeService := service.NewCommentLikeService(commentLikeRepository, commentRepository)
 	authController := controller.NewAuthController(authService)
-	userController := controller.NewUserController(userService)
 	postController := controller.NewPostController(postService)
+	userController := controller.NewUserController(userService, postService)
 	likeController := controller.NewLikeController(likeService)
 	collectController := controller.NewCollectController(collectService)
 	followController := controller.NewFollowController(followService)
@@ -79,6 +79,7 @@ func New(deps Dependencies) *gin.Engine {
 	users.Use(authMiddleware.RequireAuth())
 	users.GET("/me", userController.Me)
 
+	api.GET("/users/:id/posts", userController.ListPosts)
 	api.GET("/users/:id/likes", likeController.ListUserLikes)
 	api.GET("/users/:id/collects", collectController.ListUserCollects)
 	api.GET("/users/:id/followers", followController.ListFollowers)
@@ -86,6 +87,7 @@ func New(deps Dependencies) *gin.Engine {
 	api.POST("/users/:id/follow", authMiddleware.RequireAuth(), followController.Follow)
 	api.DELETE("/users/:id/follow", authMiddleware.RequireAuth(), followController.Unfollow)
 	api.GET("/users/:id/followed", authMiddleware.RequireAuth(), followController.IsFollowed)
+	api.GET("/users/:id", userController.PublicProfile)
 
 	posts := api.Group("/posts")
 	posts.GET("", postController.List)

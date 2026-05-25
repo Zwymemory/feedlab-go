@@ -63,6 +63,13 @@ export const modules: QuizModule[] = [
     subtitle: "评论互动、幂等、事务、like_count",
     accent: "#ef5da8",
     summary: "理解评论点赞如何复用关系表模式，并把评论可见性、幂等和计数一致性结合起来。"
+  },
+  {
+    id: "module-v2-public-profile",
+    title: "V2 模块 6：用户公开主页",
+    subtitle: "公开 VO、隐私字段、用户帖子列表",
+    accent: "#4d7cfe",
+    summary: "理解公开主页接口如何复用已有 users/posts 表，用 VO 隔离敏感字段，并只展示 published 内容。"
   }
 ];
 
@@ -832,5 +839,75 @@ export const questions: Question[] = [
     keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 校验评论", "事务", "唯一索引", "comments.like_count"],
     interviewTips: ["面试时可以强调：重复点赞 RowsAffected=0，所以不会重复增加 like_count。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/comment_like_controller.go", "backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_like_repository.go"]
+  },
+  {
+    id: "public-profile-vo-1",
+    moduleId: "module-v2-public-profile",
+    type: "multiple",
+    title: "公开主页为什么用 PublicUser？",
+    prompt: "GET /api/v1/users/:id 返回 PublicUser，而不是直接返回 User model。哪些说法正确？",
+    choices: [
+      { id: "A", text: "可以避免把 email、role、status、password_hash 等字段暴露给访客" },
+      { id: "B", text: "可以保留主页需要的 username、nickname、avatar_url、bio 和计数字段" },
+      { id: "C", text: "公开接口必须返回数据库表的全部字段" },
+      { id: "D", text: "VO 能把数据库模型和接口响应解耦" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "公开主页面向任何访客，只应该返回展示需要的字段。PublicUser 保留公开资料和计数字段，隐藏登录凭证、权限和内部状态字段。",
+    explanation: "这是接口设计中的最小暴露原则：数据库模型不是 API 合同，公开接口应该用专门的 VO 控制响应边界。",
+    whyOthersWrong: {
+      C: "直接返回全部字段会泄露不该公开的信息，也会让前端依赖数据库结构。"
+    },
+    keyPoints: ["PublicUser", "字段最小化", "隐私保护", "VO 解耦"],
+    interviewTips: ["可以说：当前用户看自己用 User VO，别人看主页用 PublicUser VO，场景不同响应不同。"],
+    codeRefs: ["backend/internal/vo/user.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "public-profile-posts-1",
+    moduleId: "module-v2-public-profile",
+    type: "single",
+    title: "为什么只返回 published 帖子？",
+    prompt: "GET /api/v1/users/:id/posts 为什么只查询 status=published 的帖子？",
+    choices: [
+      { id: "A", text: "草稿和已软删除内容不应该出现在公开主页" },
+      { id: "B", text: "MySQL 只能查询 published 字符串" },
+      { id: "C", text: "JWT 中间件会自动隐藏草稿" },
+      { id: "D", text: "因为公开主页接口必须经过登录" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "公开主页是给访客看的，只应该展示用户已经发布且仍可见的内容。草稿属于作者未公开内容，软删除内容也会被 GORM 默认过滤。",
+    explanation: "这是内容可见性边界：写入时允许 draft，读取公开列表时必须按业务状态过滤。",
+    whyOthersWrong: {
+      B: "MySQL 可以查询任何状态，过滤 published 是业务规则。",
+      C: "JWT 中间件只负责鉴权，不负责内容状态过滤。",
+      D: "公开主页和用户公开帖子列表不需要登录。"
+    },
+    keyPoints: ["published", "草稿不可见", "软删除过滤", "公开读取"],
+    interviewTips: ["可以和帖子详情接口类比：公开详情也只查 published。"],
+    codeRefs: ["backend/internal/repository/post_repository.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "public-profile-transaction-1",
+    moduleId: "module-v2-public-profile",
+    type: "short",
+    title: "公开主页为什么不需要事务？",
+    prompt: "用户公开主页和用户帖子列表都是读接口。为什么这里不需要像点赞、关注那样开启事务？",
+    referenceAnswer: "事务主要用于保证多个写操作的原子性，比如插入关系表同时更新计数字段。公开主页模块只读取 users 和 posts，不修改数据，也没有需要同时成功或回滚的跨表写入，因此不需要事务。",
+    explanation: "面试官常会看你是否滥用事务。读接口一般依靠查询条件和数据库默认隔离级别即可，除非有强一致读快照等特殊需求。",
+    keyPoints: ["读接口", "无跨表写入", "事务用于原子性", "避免滥用事务"],
+    interviewTips: ["可以补一句：如果未来做复杂报表一致性快照，才可能考虑显式事务或隔离级别。"],
+    codeRefs: ["backend/internal/service/user_service.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "public-profile-flow-1",
+    moduleId: "module-v2-public-profile",
+    type: "code",
+    title: "用户公开帖子列表的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/users/:id/posts?page=1&page_size=10 请求发生了什么。",
+    referenceAnswer: "请求进入 router 后匹配到 UserController.ListPosts。Controller 解析 path 中的 user id，并用 ShouldBindQuery 解析 page/page_size。然后调用 PostService.ListByUser。Service 先用 UserRepository.FindByID 确认用户存在，再设置默认分页参数。最后 PostRepository.ListPublishedByUser 查询该用户的 published 帖子并 Preload 作者信息，Service 组装 PostList VO，Controller 用统一响应返回。",
+    explanation: "这道题训练你把 Controller、Service、Repository 的职责讲清楚：Controller 管 HTTP，Service 管业务校验，Repository 管 SQL/GORM 查询。",
+    keyPoints: ["Controller 解析参数", "Service 校验用户存在", "Repository 查询 published", "分页", "VO 返回"],
+    interviewTips: ["面试时可以主动强调：这个接口是公开接口，所以不走 JWT 中间件。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/user_controller.go", "backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
   }
 ];

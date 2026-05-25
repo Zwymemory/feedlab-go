@@ -39,7 +39,7 @@ func spec() gin.H {
 		"tags": []gin.H{
 			{"name": "health", "description": "Service health checks"},
 			{"name": "auth", "description": "Register and login"},
-			{"name": "users", "description": "Current user APIs"},
+			{"name": "users", "description": "Current and public user APIs"},
 			{"name": "posts", "description": "Post publishing and reading"},
 			{"name": "likes", "description": "Post like interactions"},
 			{"name": "collects", "description": "Post collect interactions"},
@@ -133,6 +133,15 @@ func paths() gin.H {
 		},
 		"/api/v1/users/me": gin.H{
 			"get": operation("users", "Current user profile", "Return the current user profile from JWT context.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
+		},
+		"/api/v1/users/{id}": gin.H{
+			"get": operationWithID("users", "Public user profile", "Return a public user profile without email, role or password fields.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
+		},
+		"/api/v1/users/{id}/posts": gin.H{
+			"get": operationWithIDAndParameters("users", "List user posts", "List published posts created by a user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+			}),
 		},
 		"/api/v1/users/{id}/likes": gin.H{
 			"get": operationWithIDAndParameters("likes", "List user liked posts", "List published posts liked by a user.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{

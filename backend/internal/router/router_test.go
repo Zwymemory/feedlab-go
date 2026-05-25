@@ -47,3 +47,30 @@ func TestAuthenticatedInteractionRoutesRegister(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicUserRoutesRegister(t *testing.T) {
+	engine := New(Dependencies{
+		Config: &config.Config{
+			Server: config.ServerConfig{Mode: "test"},
+			JWT:    config.JWTConfig{Secret: "test-secret", Issuer: "feedlab", ExpiresHours: 2},
+		},
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+
+	expected := map[string]bool{
+		http.MethodGet + " /api/v1/users/:id":       false,
+		http.MethodGet + " /api/v1/users/:id/posts": false,
+	}
+	for _, route := range engine.Routes() {
+		key := route.Method + " " + route.Path
+		if _, ok := expected[key]; ok {
+			expected[key] = true
+		}
+	}
+
+	for route, found := range expected {
+		if !found {
+			t.Fatalf("expected public route %s to be registered", route)
+		}
+	}
+}

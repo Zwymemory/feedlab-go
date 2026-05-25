@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 删除 -> Swagger 文档。",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 公开主页 -> 删除 -> Swagger 文档。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -1442,7 +1442,98 @@
       ]
     },
     {
-      "name": "Module 9 - Cleanup",
+      "name": "Module 9 - Public Profile",
+      "item": [
+        {
+          "name": "GET /api/v1/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "查看当前用户的公开主页资料。预期不会返回 email、role、status、password_hash。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "posts"
+              ]
+            },
+            "description": "分页查看当前用户发布过的 published 帖子。预期列表包含前面创建的帖子。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id - target user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}"
+              ]
+            },
+            "description": "查看目标用户公开主页资料。公开用户信息只包含主页展示字段。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/posts - target user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "posts"
+              ]
+            },
+            "description": "查看目标用户公开帖子列表。目标用户没有发布帖子时 data.items 为空数组。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 10 - Cleanup",
       "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
@@ -1527,7 +1618,7 @@
       ]
     },
     {
-      "name": "Module 10 - Swagger",
+      "name": "Module 11 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",

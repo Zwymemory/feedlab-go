@@ -27,3 +27,15 @@ func (s *UserService) Me(ctx context.Context, userID uint64) (*vo.User, error) {
 	result := vo.NewUser(*user)
 	return &result, nil
 }
+
+func (s *UserService) PublicProfile(ctx context.Context, userID uint64) (*vo.PublicUser, error) {
+	user, err := s.users.FindByID(ctx, userID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := vo.NewPublicUser(*user)
+	return &result, nil
+}

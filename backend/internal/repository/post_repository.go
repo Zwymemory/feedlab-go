@@ -78,6 +78,30 @@ func (r *PostRepository) ListPublished(ctx context.Context, page int, pageSize i
 	return posts, total, nil
 }
 
+func (r *PostRepository) ListPublishedByUser(ctx context.Context, userID uint64, page int, pageSize int) ([]model.Post, int64, error) {
+	var total int64
+	query := r.db.WithContext(ctx).
+		Model(&model.Post{}).
+		Where("user_id = ? AND status = ?", userID, "published")
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var posts []model.Post
+	offset := (page - 1) * pageSize
+	err := query.
+		Preload("User").
+		Order("created_at DESC").
+		Order("id DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&posts).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return posts, total, nil
+}
+
 func (r *PostRepository) SoftDelete(ctx context.Context, id uint64) error {
 	result := r.db.WithContext(ctx).Delete(&model.Post{}, id)
 	if result.Error != nil {

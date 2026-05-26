@@ -397,11 +397,21 @@ function App() {
     setFollowLoading(true);
     setNotice(null);
     try {
+      const wasFollowed = followStatus?.followed === true;
       const result = followStatus?.followed
         ? await api.unfollowUser(profileUser.id, token)
         : await api.followUser(profileUser.id, token);
+      const followingDelta = result.followed === wasFollowed ? 0 : result.followed ? 1 : -1;
       setFollowStatus(result);
       setProfileUser((current) => (current ? { ...current, follower_count: result.follower_count } : current));
+      setCurrentUser((current) =>
+        current
+          ? {
+              ...current,
+              following_count: Math.max(0, current.following_count + followingDelta)
+            }
+          : current
+      );
       if (followListMode === "followers") {
         await loadFollowUsers(profileUser.id, "followers");
       }

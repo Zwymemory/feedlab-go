@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError, tokenStore } from "./api/client";
 import type {
+  Comment,
   CollectStatus,
   CreatePostPayload,
   HealthStatus,
@@ -55,6 +56,17 @@ function App() {
   const [likeStatus, setLikeStatus] = useState<LikeStatus | null>(null);
   const [collectStatus, setCollectStatus] = useState<CollectStatus | null>(null);
   const [interactionLoading, setInteractionLoading] = useState<InteractionTarget | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentTotal, setCommentTotal] = useState(0);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [creatingComment, setCreatingComment] = useState(false);
+  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [repliesByComment, setRepliesByComment] = useState<Record<number, Comment[]>>({});
+  const [replyTotals, setReplyTotals] = useState<Record<number, number>>({});
+  const [repliesLoading, setRepliesLoading] = useState<Record<number, boolean>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
+  const [creatingReplyID, setCreatingReplyID] = useState<number | null>(null);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -145,6 +157,9 @@ function App() {
   async function openPost(postID: number) {
     setDetailLoading(true);
     setNotice(null);
+    setLikeStatus(null);
+    setCollectStatus(null);
+    resetCommentState();
     try {
       const detail = await api.postDetail(postID);
       setSelectedPost(detail);
@@ -159,6 +174,7 @@ function App() {
         setLikeStatus(null);
         setCollectStatus(null);
       }
+      await loadComments(postID);
     } catch (error) {
       setNotice({ type: "error", text: formatError(error, "帖子详情加载失败。") });
     } finally {
@@ -170,6 +186,7 @@ function App() {
     setSelectedPost(null);
     setLikeStatus(null);
     setCollectStatus(null);
+    resetCommentState();
   }
 
   function syncPostCounts(
@@ -180,6 +197,46 @@ function App() {
       currentPosts.map((post) => (post.id === postID ? { ...post, ...counts } : post))
     );
     setSelectedPost((currentPost) => (currentPost?.id === postID ? { ...currentPost, ...counts } : currentPost));
+  }
+
+  function resetCommentState() {
+    setComments([]);
+    setCommentTotal(0);
+    setCommentsLoading(false);
+    setCommentDraft("");
+    setCreatingComment(false);
+    setExpandedReplies({});
+    setRepliesByComment({});
+    setReplyTotals({});
+    setRepliesLoading({});
+    setReplyDrafts({});
+    setCreatingReplyID(null);
+  }
+
+  async function loadComments(postID: number) {
+    setCommentsLoading(true);
+    try {
+      const result = await api.listComments(postID, 1, 10);
+      setComments(result.items);
+      setCommentTotal(result.total);
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "评论加载失败。") });
+    } finally {
+      setCommentsLoading(false);
+    }
+  }
+
+  async function loadReplies(commentID: number) {
+    setRepliesLoading((current) => ({ ...current, [commentID]: true }));
+    try {
+      const result = await api.listReplies(commentID, 1, 10);
+      setRepliesByComment((current) => ({ ...current, [commentID]: result.items }));
+      setReplyTotals((current) => ({ ...current, [commentID]: result.total }));
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "回复加载失败。") });
+    } finally {
+      setRepliesLoading((current) => ({ ...current, [commentID]: false }));
+    }
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -294,6 +351,82 @@ function App() {
       setNotice({ type: "error", text: formatError(error, "收藏操作失败。") });
     } finally {
       setInteractionLoading(null);
+    }
+  }
+
+  async function handleCreateComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedPost) {
+      return;
+    }
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再发布评论。" });
+      return;
+    }
+
+    const content = commentDraft.trim();
+    if (!content) {
+      setNotice({ type: "error", text: "评论内容不能为空。" });
+      return;
+    }
+
+    setCreatingComment(true);
+    setNotice(null);
+    try {
+      const created = await api.createComment(selectedPost.id, { content, parent_id: 0 }, token);
+      setComments((current) => [created, ...current]);
+      setCommentTotal((current) => current + 1);
+      setCommentDraft("");
+      syncPostCounts(selectedPost.id, { comment_count: selectedPost.comment_count + 1 });
+      setNotice({ type: "success", text: "评论发布成功。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "评论发布失败。") });
+    } finally {
+      setCreatingComment(false);
+    }
+  }
+
+  async function toggleReplies(commentID: number) {
+    const willOpen = !expandedReplies[commentID];
+    setExpandedReplies((current) => ({ ...current, [commentID]: willOpen }));
+    if (willOpen && !repliesByComment[commentID]) {
+      await loadReplies(commentID);
+    }
+  }
+
+  async function handleCreateReply(event: FormEvent<HTMLFormElement>, parentID: number) {
+    event.preventDefault();
+    if (!selectedPost) {
+      return;
+    }
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再回复评论。" });
+      return;
+    }
+
+    const content = (replyDrafts[parentID] ?? "").trim();
+    if (!content) {
+      setNotice({ type: "error", text: "回复内容不能为空。" });
+      return;
+    }
+
+    setCreatingReplyID(parentID);
+    setNotice(null);
+    try {
+      const created = await api.createComment(selectedPost.id, { content, parent_id: parentID }, token);
+      setExpandedReplies((current) => ({ ...current, [parentID]: true }));
+      setRepliesByComment((current) => ({
+        ...current,
+        [parentID]: [...(current[parentID] ?? []), created]
+      }));
+      setReplyTotals((current) => ({ ...current, [parentID]: (current[parentID] ?? 0) + 1 }));
+      setReplyDrafts((current) => ({ ...current, [parentID]: "" }));
+      syncPostCounts(selectedPost.id, { comment_count: selectedPost.comment_count + 1 });
+      setNotice({ type: "success", text: "回复发布成功。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "回复发布失败。") });
+    } finally {
+      setCreatingReplyID(null);
     }
   }
 
@@ -551,9 +684,32 @@ function App() {
                 likeStatus={likeStatus}
                 collectStatus={collectStatus}
                 interactionLoading={interactionLoading}
+                comments={comments}
+                commentTotal={commentTotal}
+                commentsLoading={commentsLoading}
+                commentDraft={commentDraft}
+                creatingComment={creatingComment}
+                expandedReplies={expandedReplies}
+                repliesByComment={repliesByComment}
+                replyTotals={replyTotals}
+                repliesLoading={repliesLoading}
+                replyDrafts={replyDrafts}
+                creatingReplyID={creatingReplyID}
                 onClose={closePost}
                 onToggleLike={() => void toggleLike()}
                 onToggleCollect={() => void toggleCollect()}
+                onRefreshComments={() => {
+                  if (selectedPost) {
+                    void loadComments(selectedPost.id);
+                  }
+                }}
+                onCommentDraftChange={setCommentDraft}
+                onCreateComment={handleCreateComment}
+                onToggleReplies={(commentID) => void toggleReplies(commentID)}
+                onReplyDraftChange={(commentID, value) =>
+                  setReplyDrafts((current) => ({ ...current, [commentID]: value }))
+                }
+                onCreateReply={(event, parentID) => void handleCreateReply(event, parentID)}
               />
             )}
           </section>
@@ -607,9 +763,26 @@ function PostDetailPanel({
   likeStatus,
   collectStatus,
   interactionLoading,
+  comments,
+  commentTotal,
+  commentsLoading,
+  commentDraft,
+  creatingComment,
+  expandedReplies,
+  repliesByComment,
+  replyTotals,
+  repliesLoading,
+  replyDrafts,
+  creatingReplyID,
   onClose,
   onToggleLike,
-  onToggleCollect
+  onToggleCollect,
+  onRefreshComments,
+  onCommentDraftChange,
+  onCreateComment,
+  onToggleReplies,
+  onReplyDraftChange,
+  onCreateReply
 }: {
   post: Post | null;
   loading: boolean;
@@ -617,9 +790,26 @@ function PostDetailPanel({
   likeStatus: LikeStatus | null;
   collectStatus: CollectStatus | null;
   interactionLoading: InteractionTarget | null;
+  comments: Comment[];
+  commentTotal: number;
+  commentsLoading: boolean;
+  commentDraft: string;
+  creatingComment: boolean;
+  expandedReplies: Record<number, boolean>;
+  repliesByComment: Record<number, Comment[]>;
+  replyTotals: Record<number, number>;
+  repliesLoading: Record<number, boolean>;
+  replyDrafts: Record<number, string>;
+  creatingReplyID: number | null;
   onClose: () => void;
   onToggleLike: () => void;
   onToggleCollect: () => void;
+  onRefreshComments: () => void;
+  onCommentDraftChange: (value: string) => void;
+  onCreateComment: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleReplies: (commentID: number) => void;
+  onReplyDraftChange: (commentID: number, value: string) => void;
+  onCreateReply: (event: FormEvent<HTMLFormElement>, parentID: number) => void;
 }) {
   if (loading && !post) {
     return (
@@ -690,7 +880,213 @@ function PostDetailPanel({
       </div>
 
       {!loggedIn && <p className="detail-hint">登录后可以点赞和收藏这篇帖子。</p>}
+
+      <CommentSection
+        loggedIn={loggedIn}
+        comments={comments}
+        total={commentTotal}
+        loading={commentsLoading}
+        draft={commentDraft}
+        creating={creatingComment}
+        expandedReplies={expandedReplies}
+        repliesByComment={repliesByComment}
+        replyTotals={replyTotals}
+        repliesLoading={repliesLoading}
+        replyDrafts={replyDrafts}
+        creatingReplyID={creatingReplyID}
+        onRefresh={onRefreshComments}
+        onDraftChange={onCommentDraftChange}
+        onSubmit={onCreateComment}
+        onToggleReplies={onToggleReplies}
+        onReplyDraftChange={onReplyDraftChange}
+        onCreateReply={onCreateReply}
+      />
     </section>
+  );
+}
+
+function CommentSection({
+  loggedIn,
+  comments,
+  total,
+  loading,
+  draft,
+  creating,
+  expandedReplies,
+  repliesByComment,
+  replyTotals,
+  repliesLoading,
+  replyDrafts,
+  creatingReplyID,
+  onRefresh,
+  onDraftChange,
+  onSubmit,
+  onToggleReplies,
+  onReplyDraftChange,
+  onCreateReply
+}: {
+  loggedIn: boolean;
+  comments: Comment[];
+  total: number;
+  loading: boolean;
+  draft: string;
+  creating: boolean;
+  expandedReplies: Record<number, boolean>;
+  repliesByComment: Record<number, Comment[]>;
+  replyTotals: Record<number, number>;
+  repliesLoading: Record<number, boolean>;
+  replyDrafts: Record<number, string>;
+  creatingReplyID: number | null;
+  onRefresh: () => void;
+  onDraftChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleReplies: (commentID: number) => void;
+  onReplyDraftChange: (commentID: number, value: string) => void;
+  onCreateReply: (event: FormEvent<HTMLFormElement>, parentID: number) => void;
+}) {
+  return (
+    <section className="comments-section">
+      <div className="comments-header">
+        <div>
+          <p className="eyebrow">Module 4</p>
+          <h3>评论区</h3>
+        </div>
+        <button className="text-button" type="button" onClick={onRefresh} disabled={loading}>
+          {loading ? "刷新中" : `${total} 条`}
+        </button>
+      </div>
+
+      <form className="comment-form" onSubmit={onSubmit}>
+        <label>
+          <span>发布评论</span>
+          <textarea
+            value={draft}
+            maxLength={1000}
+            placeholder={loggedIn ? "写下你的想法。" : "登录后可以发布评论。"}
+            onChange={(event) => onDraftChange(event.target.value)}
+          />
+        </label>
+        <button className="primary-button compact" type="submit" disabled={!loggedIn || creating || !draft.trim()}>
+          {creating ? "发布中..." : loggedIn ? "发布评论" : "请先登录"}
+        </button>
+      </form>
+
+      {loading ? (
+        <p className="empty-text">正在加载评论...</p>
+      ) : comments.length > 0 ? (
+        <div className="comment-list">
+          {comments.map((comment) => (
+            <CommentItem
+              key={comment.id}
+              comment={comment}
+              loggedIn={loggedIn}
+              expanded={Boolean(expandedReplies[comment.id])}
+              replies={repliesByComment[comment.id] ?? []}
+              replyTotal={replyTotals[comment.id] ?? 0}
+              repliesLoading={Boolean(repliesLoading[comment.id])}
+              replyDraft={replyDrafts[comment.id] ?? ""}
+              creatingReply={creatingReplyID === comment.id}
+              onToggleReplies={() => onToggleReplies(comment.id)}
+              onReplyDraftChange={(value) => onReplyDraftChange(comment.id, value)}
+              onCreateReply={(event) => onCreateReply(event, comment.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="empty-text">还没有评论。登录后可以写第一条。</p>
+      )}
+    </section>
+  );
+}
+
+function CommentItem({
+  comment,
+  loggedIn,
+  expanded,
+  replies,
+  replyTotal,
+  repliesLoading,
+  replyDraft,
+  creatingReply,
+  onToggleReplies,
+  onReplyDraftChange,
+  onCreateReply
+}: {
+  comment: Comment;
+  loggedIn: boolean;
+  expanded: boolean;
+  replies: Comment[];
+  replyTotal: number;
+  repliesLoading: boolean;
+  replyDraft: string;
+  creatingReply: boolean;
+  onToggleReplies: () => void;
+  onReplyDraftChange: (value: string) => void;
+  onCreateReply: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <article className="comment-item">
+      <CommentBody comment={comment} />
+      <div className="comment-actions">
+        <button className="text-button" type="button" onClick={onToggleReplies}>
+          {expanded ? "收起回复" : replyTotal > 0 ? `查看 ${replyTotal} 条回复` : "回复 / 查看回复"}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="reply-block">
+          <form className="reply-form" onSubmit={onCreateReply}>
+            <label>
+              <span>回复 @{comment.author.username}</span>
+              <textarea
+                value={replyDraft}
+                maxLength={1000}
+                placeholder={loggedIn ? "写一条回复。" : "登录后可以回复评论。"}
+                onChange={(event) => onReplyDraftChange(event.target.value)}
+              />
+            </label>
+            <button className="secondary-button" type="submit" disabled={!loggedIn || creatingReply || !replyDraft.trim()}>
+              {creatingReply ? "回复中..." : loggedIn ? "发布回复" : "请先登录"}
+            </button>
+          </form>
+
+          {repliesLoading ? (
+            <p className="empty-text">正在加载回复...</p>
+          ) : replies.length > 0 ? (
+            <div className="reply-list">
+              {replies.map((reply) => (
+                <article className="comment-item reply" key={reply.id}>
+                  <CommentBody comment={reply} />
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-text">暂无回复。</p>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function CommentBody({ comment }: { comment: Comment }) {
+  return (
+    <>
+      <div className="comment-head">
+        <div className="avatar tiny">{initialsFromName(comment.author.nickname || comment.author.username)}</div>
+        <div>
+          <strong>{comment.author.nickname || comment.author.username}</strong>
+          <span>@{comment.author.username}</span>
+        </div>
+        <time>{formatDate(comment.created_at)}</time>
+      </div>
+      {comment.reply_to_user_id > 0 && <p className="reply-target">回复用户 #{comment.reply_to_user_id}</p>}
+      <p className="comment-content">{comment.content}</p>
+      <div className="comment-meta">
+        <span>#{comment.id}</span>
+        <span>{comment.like_count} 赞</span>
+      </div>
+    </>
   );
 }
 

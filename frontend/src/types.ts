@@ -69,6 +69,32 @@ export type CollectStatus = {
   collect_count: number;
 };
 
+export type Comment = {
+  id: number;
+  post_id: number;
+  user_id: number;
+  parent_id: number;
+  reply_to_user_id: number;
+  content: string;
+  like_count: number;
+  status: "published";
+  created_at: string;
+  updated_at: string;
+  author: Author;
+};
+
+export type CommentList = {
+  items: Comment[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export type CreateCommentPayload = {
+  content: string;
+  parent_id?: number;
+};
+
 export type CreatePostPayload = {
   title: string;
   content: string;

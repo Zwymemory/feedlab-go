@@ -1,6 +1,9 @@
 import type {
   ApiResponse,
+  Comment,
+  CommentList,
   CollectStatus,
+  CreateCommentPayload,
   CreatePostPayload,
   HealthStatus,
   LikeStatus,
@@ -145,5 +148,26 @@ export const api = {
   },
   postCollected(postID: number, token: string) {
     return request<CollectStatus>(`/api/v1/posts/${postID}/collected`, { token });
+  },
+  listComments(postID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<CommentList>(`/api/v1/posts/${postID}/comments?${params.toString()}`);
+  },
+  createComment(postID: number, payload: CreateCommentPayload, token: string) {
+    return request<Comment>(`/api/v1/posts/${postID}/comments`, {
+      method: "POST",
+      body: payload,
+      token
+    });
+  },
+  listReplies(commentID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<CommentList>(`/api/v1/comments/${commentID}/replies?${params.toString()}`);
   }
 };

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
@@ -12,13 +13,14 @@ import (
 )
 
 type LikeService struct {
-	likes *repository.PostLikeRepository
-	posts *repository.PostRepository
-	users *repository.UserRepository
+	likes     *repository.PostLikeRepository
+	posts     *repository.PostRepository
+	users     *repository.UserRepository
+	postCache *cache.PostCache
 }
 
-func NewLikeService(likes *repository.PostLikeRepository, posts *repository.PostRepository, users *repository.UserRepository) *LikeService {
-	return &LikeService{likes: likes, posts: posts, users: users}
+func NewLikeService(likes *repository.PostLikeRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache) *LikeService {
+	return &LikeService{likes: likes, posts: posts, users: users, postCache: postCache}
 }
 
 func (s *LikeService) LikePost(ctx context.Context, postID uint64, userID uint64) (*vo.LikeStatus, error) {
@@ -45,6 +47,7 @@ func (s *LikeService) LikePost(ctx context.Context, postID uint64, userID uint64
 	if err != nil {
 		return nil, err
 	}
+	_ = s.postCache.Delete(ctx, postID)
 
 	likeCount, err := s.posts.GetPublishedLikeCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -80,6 +83,7 @@ func (s *LikeService) UnlikePost(ctx context.Context, postID uint64, userID uint
 	if err != nil {
 		return nil, err
 	}
+	_ = s.postCache.Delete(ctx, postID)
 
 	likeCount, err := s.posts.GetPublishedLikeCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {

@@ -18,6 +18,7 @@ redis:
   addr: "127.0.0.1:6379"
   password: ""
   db: 0
+  post_detail_ttl_seconds: 300
 
 jwt:
   secret: "feedlab_v1_change_me"

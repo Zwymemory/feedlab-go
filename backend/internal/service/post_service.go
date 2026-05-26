@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
 	"feedlab/backend/internal/model"
 	"feedlab/backend/internal/repository"
@@ -14,12 +15,13 @@ import (
 )
 
 type PostService struct {
-	posts *repository.PostRepository
-	users *repository.UserRepository
+	posts     *repository.PostRepository
+	users     *repository.UserRepository
+	postCache *cache.PostCache
 }
 
-func NewPostService(posts *repository.PostRepository, users *repository.UserRepository) *PostService {
-	return &PostService{posts: posts, users: users}
+func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache) *PostService {
+	return &PostService{posts: posts, users: users, postCache: postCache}
 }
 
 func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreatePostRequest) (*vo.Post, error) {
@@ -125,6 +127,10 @@ func (s *PostService) ListByUser(ctx context.Context, userID uint64, query dto.L
 }
 
 func (s *PostService) Detail(ctx context.Context, id uint64) (*vo.Post, error) {
+	if cached, ok, err := s.postCache.Get(ctx, id); err == nil && ok {
+		return cached, nil
+	}
+
 	post, err := s.posts.FindPublishedByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrNotFound
@@ -133,6 +139,7 @@ func (s *PostService) Detail(ctx context.Context, id uint64) (*vo.Post, error) {
 		return nil, err
 	}
 	result := vo.NewPost(*post)
+	_ = s.postCache.Set(ctx, result)
 	return &result, nil
 }
 
@@ -148,7 +155,7 @@ func (s *PostService) Delete(ctx context.Context, id uint64, currentUserID uint6
 		return ErrForbidden
 	}
 
-	return s.posts.Transaction(ctx, func(tx *gorm.DB) error {
+	err = s.posts.Transaction(ctx, func(tx *gorm.DB) error {
 		txPosts := s.posts.WithTx(tx)
 		txUsers := s.users.WithTx(tx)
 
@@ -160,4 +167,9 @@ func (s *PostService) Delete(ctx context.Context, id uint64, currentUserID uint6
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	_ = s.postCache.Delete(ctx, id)
+	return nil
 }

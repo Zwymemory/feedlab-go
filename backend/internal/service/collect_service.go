@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
@@ -12,13 +13,14 @@ import (
 )
 
 type CollectService struct {
-	collects *repository.PostCollectRepository
-	posts    *repository.PostRepository
-	users    *repository.UserRepository
+	collects  *repository.PostCollectRepository
+	posts     *repository.PostRepository
+	users     *repository.UserRepository
+	postCache *cache.PostCache
 }
 
-func NewCollectService(collects *repository.PostCollectRepository, posts *repository.PostRepository, users *repository.UserRepository) *CollectService {
-	return &CollectService{collects: collects, posts: posts, users: users}
+func NewCollectService(collects *repository.PostCollectRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache) *CollectService {
+	return &CollectService{collects: collects, posts: posts, users: users, postCache: postCache}
 }
 
 func (s *CollectService) CollectPost(ctx context.Context, postID uint64, userID uint64) (*vo.CollectStatus, error) {
@@ -45,6 +47,7 @@ func (s *CollectService) CollectPost(ctx context.Context, postID uint64, userID 
 	if err != nil {
 		return nil, err
 	}
+	_ = s.postCache.Delete(ctx, postID)
 
 	collectCount, err := s.posts.GetPublishedCollectCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -80,6 +83,7 @@ func (s *CollectService) UncollectPost(ctx context.Context, postID uint64, userI
 	if err != nil {
 		return nil, err
 	}
+	_ = s.postCache.Delete(ctx, postID)
 
 	collectCount, err := s.posts.GetPublishedCollectCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {

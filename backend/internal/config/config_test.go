@@ -40,4 +40,7 @@ jwt:
 	if cfg.JWT.ExpiresHours != 2 {
 		t.Fatalf("expected default jwt expires hours, got %d", cfg.JWT.ExpiresHours)
 	}
+	if cfg.Redis.PostDetailTTLSeconds != 300 {
+		t.Fatalf("expected default post detail ttl seconds, got %d", cfg.Redis.PostDetailTTLSeconds)
+	}
 }

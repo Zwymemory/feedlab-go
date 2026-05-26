@@ -1723,6 +1723,101 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 13 - V3 Redis Post Detail Cache",
+      "item": [
+        {
+          "name": "GET /api/v1/posts/:id - warm cache",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "V3 缓存预热：先执行一次帖子详情。执行前可在终端运行 redis-cli DEL post:detail:{{post_id}}，请求成功后再运行 redis-cli TTL post:detail:{{post_id}}，预期 TTL > 0。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id - cache hit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "V3 缓存命中：紧接上一步再次查询同一帖子详情，预期响应结构一致，服务端会优先读 Redis 的 post:detail:{post_id}。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/like - invalidate cache",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "V3 缓存失效：点赞会改变帖子详情中的 like_count，接口成功后会删除 post:detail:{post_id}。可运行 redis-cli EXISTS post:detail:{{post_id}}，预期返回 0。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id - refill cache",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "V3 缓存回填：点赞删除旧缓存后，再次查询详情会回源 MySQL 并重新写入 Redis。可运行 redis-cli TTL post:detail:{{post_id}} 验证。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

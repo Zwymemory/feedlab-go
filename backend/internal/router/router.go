@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"time"
 
+	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/config"
 	"feedlab/backend/internal/controller"
 	"feedlab/backend/internal/middleware"
@@ -49,13 +50,14 @@ func New(deps Dependencies) *gin.Engine {
 	userFollowRepository := repository.NewUserFollowRepository(deps.MySQL)
 	commentRepository := repository.NewCommentRepository(deps.MySQL)
 	commentLikeRepository := repository.NewCommentLikeRepository(deps.MySQL)
+	postCache := cache.NewPostCache(deps.Redis, time.Duration(deps.Config.Redis.PostDetailTTLSeconds)*time.Second)
 	authService := service.NewAuthService(userRepository, tokenManager)
 	userService := service.NewUserService(userRepository)
-	postService := service.NewPostService(postRepository, userRepository)
-	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository)
-	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository)
+	postService := service.NewPostService(postRepository, userRepository, postCache)
+	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository, postCache)
+	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository, postCache)
 	followService := service.NewFollowService(userFollowRepository, userRepository)
-	commentService := service.NewCommentService(commentRepository, postRepository)
+	commentService := service.NewCommentService(commentRepository, postRepository, postCache)
 	commentLikeService := service.NewCommentLikeService(commentLikeRepository, commentRepository)
 	authController := controller.NewAuthController(authService)
 	postController := controller.NewPostController(postService)

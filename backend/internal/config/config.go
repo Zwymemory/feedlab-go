@@ -36,9 +36,10 @@ type MySQLConfig struct {
 }
 
 type RedisConfig struct {
-	Addr     string `yaml:"addr"`
-	Password string `yaml:"password"`
-	DB       int    `yaml:"db"`
+	Addr                 string `yaml:"addr"`
+	Password             string `yaml:"password"`
+	DB                   int    `yaml:"db"`
+	PostDetailTTLSeconds int    `yaml:"post_detail_ttl_seconds"`
 }
 
 type JWTConfig struct {
@@ -96,6 +97,9 @@ func (c *Config) withDefaults() {
 	}
 	if c.Log.Level == "" {
 		c.Log.Level = "info"
+	}
+	if c.Redis.PostDetailTTLSeconds == 0 {
+		c.Redis.PostDetailTTLSeconds = 300
 	}
 }
 

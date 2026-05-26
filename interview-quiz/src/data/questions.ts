@@ -77,6 +77,13 @@ export const modules: QuizModule[] = [
     subtitle: "事务、幂等、唯一索引、演进路线",
     accent: "#111827",
     summary: "把 V2 的互动系统串起来，练习用项目语言讲清楚一致性、可见性、分层职责和后续 Redis/RabbitMQ 演进。"
+  },
+  {
+    id: "module-v3-post-cache",
+    title: "V3 模块 1：帖子详情缓存",
+    subtitle: "Redis、Cache Aside、TTL、缓存失效",
+    accent: "#dc2626",
+    summary: "理解为什么帖子详情适合缓存，以及如何在点赞、收藏、评论等写操作后删除旧缓存。"
   }
 ];
 
@@ -986,5 +993,72 @@ export const questions: Question[] = [
     keyPoints: ["互动能力", "关系表", "唯一索引", "幂等", "事务", "VO", "Redis/RabbitMQ 演进"],
     interviewTips: ["回答时控制在 60-90 秒，先讲整体，再举点赞或关注一个具体例子。"],
     codeRefs: ["docs/feedlab-v2-interactions-code-guide.md", "backend/internal/router/router.go"]
+  },
+  {
+    id: "v3-post-cache-aside-1",
+    moduleId: "module-v3-post-cache",
+    type: "single",
+    title: "帖子详情为什么适合 Cache Aside？",
+    prompt: "FeedLab V3 给 GET /api/v1/posts/:id 加 Redis 缓存，采用 Cache Aside 模式。下面哪种说法最准确？",
+    choices: [
+      { id: "A", text: "先读 Redis，未命中再查 MySQL，并把结果写回 Redis" },
+      { id: "B", text: "所有写请求都只写 Redis，不再写 MySQL" },
+      { id: "C", text: "只要使用 GORM，Redis 会自动缓存所有查询" },
+      { id: "D", text: "Cache Aside 意味着缓存永远不会过期" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "Cache Aside 的核心是业务代码先查缓存；缓存没有时再查数据库，然后把数据库结果写入缓存。MySQL 仍是最终数据源，Redis 是读优化层。",
+    explanation: "帖子详情是高频读接口，很适合用 Cache Aside 降低 MySQL 压力。但缓存不能取代数据库持久化，也需要 TTL 和失效策略。",
+    whyOthersWrong: {
+      B: "FeedLab 仍以 MySQL 为最终数据源，写操作不能只写 Redis。",
+      C: "GORM 不会自动接管 Redis 缓存，需要业务代码显式读写缓存。",
+      D: "缓存必须有 TTL 或失效策略，否则容易长期返回旧数据。"
+    },
+    keyPoints: ["Cache Aside", "Redis 命中", "MySQL 回源", "写回缓存", "MySQL 是最终数据源"],
+    interviewTips: ["可以用一句话回答：读缓存，未命中查库并回填，写操作后删除缓存。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/cache/post_cache.go"]
+  },
+  {
+    id: "v3-post-cache-key-1",
+    moduleId: "module-v3-post-cache",
+    type: "short",
+    title: "post:detail:{post_id} 的用途和 TTL",
+    prompt: "请解释 Redis Key `post:detail:{post_id}` 的用途、缓存内容和过期策略。",
+    referenceAnswer: "`post:detail:{post_id}` 用来缓存某篇 published 帖子的详情响应 VO，包括作者信息和计数字段。默认 TTL 是 300 秒，可通过 config.yaml 中的 redis.post_detail_ttl_seconds 调整。TTL 能限制旧数据最长存在时间，缓存失效则回源 MySQL。",
+    explanation: "面试官问 Redis Key 时，不只想听 key 名字，还想听它缓存什么、为什么过期、什么时候删除。",
+    keyPoints: ["帖子详情 VO", "published 帖子", "默认 300 秒", "TTL 防止旧数据长期存在", "未命中回源 MySQL"],
+    interviewTips: ["可以补一句：我缓存的是 VO，不是 GORM Model，避免缓存数据库内部结构。"],
+    codeRefs: ["backend/internal/cache/post_cache.go", "backend/config.yaml", "backend/internal/config/config.go"]
+  },
+  {
+    id: "v3-post-cache-invalidate-1",
+    moduleId: "module-v3-post-cache",
+    type: "multiple",
+    title: "哪些操作需要删除帖子详情缓存？",
+    prompt: "帖子详情中包含点赞数、收藏数、评论数和帖子可见性。下面哪些操作成功后应该删除 `post:detail:{post_id}`？",
+    choices: [
+      { id: "A", text: "点赞或取消点赞帖子" },
+      { id: "B", text: "收藏或取消收藏帖子" },
+      { id: "C", text: "发布或删除评论" },
+      { id: "D", text: "删除帖子" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "这四类操作都会影响帖子详情响应。点赞和收藏会改变计数字段，评论创建和删除会改变 comment_count，删除帖子会改变可见性，所以成功后都要删除旧详情缓存。",
+    explanation: "缓存一致性的核心是识别哪些写操作会影响缓存内容。只缓存读接口不难，难点是写操作后不返回旧数据。",
+    keyPoints: ["like_count", "collect_count", "comment_count", "软删除可见性", "写后删缓存"],
+    interviewTips: ["回答时可以强调：删除缓存比同步更新缓存更简单可靠，下一次读取自然回源。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/service/collect_service.go", "backend/internal/service/comment_service.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "v3-post-cache-code-1",
+    moduleId: "module-v3-post-cache",
+    type: "code",
+    title: "帖子详情缓存的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/posts/:id 在 V3 中如何使用 Redis 缓存。",
+    referenceAnswer: "请求进入 router 后匹配到 PostController.Detail。Controller 解析帖子 ID 后调用 PostService.Detail。Service 先调用 PostCache.Get 读取 `post:detail:{id}`，命中则直接返回缓存的 Post VO。未命中时调用 PostRepository.FindPublishedByID 查询 MySQL，并 Preload 作者信息，然后用 vo.NewPost 组装响应 VO，最后调用 PostCache.Set 写入 Redis，TTL 默认 300 秒。",
+    explanation: "这道题训练你把 Controller-Service-Repository-Cache 的协作说清楚。Repository 仍只负责 MySQL，Cache 封装 Redis，Service 编排业务流程。",
+    keyPoints: ["Controller 解析 ID", "Service 先查缓存", "Repository 回源 MySQL", "VO 写入 Redis", "TTL"],
+    interviewTips: ["可以补一句：缓存异常不应该改变接口语义，MySQL 仍是最终数据源。"],
+    codeRefs: ["backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/cache/post_cache.go", "backend/internal/repository/post_repository.go"]
   }
 ];

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
 	"feedlab/backend/internal/model"
 	"feedlab/backend/internal/repository"
@@ -14,12 +15,13 @@ import (
 )
 
 type CommentService struct {
-	comments *repository.CommentRepository
-	posts    *repository.PostRepository
+	comments  *repository.CommentRepository
+	posts     *repository.PostRepository
+	postCache *cache.PostCache
 }
 
-func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository) *CommentService {
-	return &CommentService{comments: comments, posts: posts}
+func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache) *CommentService {
+	return &CommentService{comments: comments, posts: posts, postCache: postCache}
 }
 
 func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint64, req dto.CreateCommentRequest) (*vo.Comment, error) {
@@ -67,6 +69,7 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 	if err != nil {
 		return nil, err
 	}
+	_ = s.postCache.Delete(ctx, postID)
 
 	created, err := s.comments.FindByID(ctx, comment.ID)
 	if err != nil {
@@ -157,6 +160,7 @@ func (s *CommentService) Delete(ctx context.Context, commentID uint64, currentUs
 		}
 		return nil, err
 	}
+	_ = s.postCache.Delete(ctx, comment.PostID)
 	return &vo.DeleteCommentResult{Deleted: true, DeletedCount: deletedCount}, nil
 }
 

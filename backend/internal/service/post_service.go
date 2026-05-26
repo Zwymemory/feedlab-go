@@ -94,6 +94,36 @@ func (s *PostService) List(ctx context.Context, query dto.ListPostsQuery) (*vo.P
 	}, nil
 }
 
+func (s *PostService) ListByUser(ctx context.Context, userID uint64, query dto.ListPostsQuery) (*vo.PostList, error) {
+	if _, err := s.users.FindByID(ctx, userID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	page := query.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	posts, total, err := s.posts.ListPublishedByUser(ctx, userID, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vo.PostList{
+		Items:    vo.NewPosts(posts),
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+	}, nil
+}
+
 func (s *PostService) Detail(ctx context.Context, id uint64) (*vo.Post, error) {
 	post, err := s.posts.FindPublishedByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {

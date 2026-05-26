@@ -28,6 +28,55 @@ export const modules: QuizModule[] = [
     subtitle: "OpenAPI、接口契约、文档展示",
     accent: "#8a63d2",
     summary: "理解接口文档不是摆设：它定义 API 契约，Swagger UI 还能直接调试接口。"
+  },
+  {
+    id: "module-v2-likes",
+    title: "V2 模块 1：帖子点赞",
+    subtitle: "唯一索引、幂等、事务、计数维护",
+    accent: "#d9902f",
+    summary: "理解互动系统的第一块拼图：用数据库唯一索引兜底幂等，用事务维护点赞关系和 like_count。"
+  },
+  {
+    id: "module-v2-comments",
+    title: "V2 模块 2：评论系统",
+    subtitle: "两层评论、软删除、事务、comment_count",
+    accent: "#2f9f8f",
+    summary: "理解评论系统如何用 parent_id 表达层级，用软删除保留内容记录，并用事务维护帖子评论数。"
+  },
+  {
+    id: "module-v2-collects",
+    title: "V2 模块 3：帖子收藏",
+    subtitle: "收藏关系、幂等、事务、collect_count",
+    accent: "#b75cff",
+    summary: "理解收藏系统如何复用互动关系表模式，用唯一索引保证幂等，并用事务维护帖子收藏数。"
+  },
+  {
+    id: "module-v2-follows",
+    title: "V2 模块 4：用户关注",
+    subtitle: "用户关系、禁止自关、双计数事务",
+    accent: "#12a594",
+    summary: "理解关注系统如何建模人与人的关系，用唯一索引兜底幂等，并在事务中维护粉丝数和关注数。"
+  },
+  {
+    id: "module-v2-comment-likes",
+    title: "V2 模块 5：评论点赞",
+    subtitle: "评论互动、幂等、事务、like_count",
+    accent: "#ef5da8",
+    summary: "理解评论点赞如何复用关系表模式，并把评论可见性、幂等和计数一致性结合起来。"
+  },
+  {
+    id: "module-v2-public-profile",
+    title: "V2 模块 6：用户公开主页",
+    subtitle: "公开 VO、隐私字段、用户帖子列表",
+    accent: "#4d7cfe",
+    summary: "理解公开主页接口如何复用已有 users/posts 表，用 VO 隔离敏感字段，并只展示 published 内容。"
+  },
+  {
+    id: "module-v2-review",
+    title: "V2 综合复盘",
+    subtitle: "事务、幂等、唯一索引、演进路线",
+    accent: "#111827",
+    summary: "把 V2 的互动系统串起来，练习用项目语言讲清楚一致性、可见性、分层职责和后续 Redis/RabbitMQ 演进。"
   }
 ];
 
@@ -337,5 +386,605 @@ export const questions: Question[] = [
     keyPoints: ["securitySchemes", "Bearer token", "Authorize 按钮", "Authorization Header"],
     interviewTips: ["回答时可以联系用户模块：登录拿到 access_token，再在 Swagger UI Authorize 中填入 token。"],
     codeRefs: ["backend/internal/swagger/swagger.go", "backend/internal/middleware/auth.go"]
+  },
+  {
+    id: "likes-unique-index-1",
+    moduleId: "module-v2-likes",
+    type: "single",
+    title: "post_likes 为什么要唯一索引？",
+    prompt: "FeedLab V2 的 post_likes 表给 post_id + user_id 建唯一索引，最核心的作用是什么？",
+    choices: [
+      { id: "A", text: "防止同一个用户对同一篇帖子插入多条点赞记录" },
+      { id: "B", text: "让 JWT 自动刷新" },
+      { id: "C", text: "让 Redis 自动缓存点赞状态" },
+      { id: "D", text: "让所有用户只能点赞一篇帖子" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "post_id + user_id 唯一索引用来保证同一个用户对同一篇帖子最多只有一条点赞关系。即使并发请求同时到达，数据库也能兜底防止重复插入。",
+    explanation: "幂等不能只靠代码里的先查再插。高并发下两个请求可能同时判断不存在，所以必须用数据库唯一约束做最终保护。",
+    whyOthersWrong: {
+      B: "JWT 刷新和点赞关系表无关。",
+      C: "V2 点赞模块暂不使用 Redis 点赞状态缓存。",
+      D: "唯一索引限制的是同一 user_id + post_id 组合，不限制用户点赞多篇帖子。"
+    },
+    keyPoints: ["唯一索引", "并发兜底", "防止重复点赞", "幂等基础"],
+    interviewTips: ["可以说：应用层幂等负责语义，数据库唯一索引负责最终一致性兜底。"],
+    codeRefs: ["backend/internal/model/post_like.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "likes-idempotent-1",
+    moduleId: "module-v2-likes",
+    type: "multiple",
+    title: "点赞接口如何做到幂等？",
+    prompt: "关于 POST /api/v1/posts/:id/like 的幂等设计，哪些说法是正确的？",
+    choices: [
+      { id: "A", text: "第一次点赞插入 post_likes 并让 posts.like_count +1" },
+      { id: "B", text: "重复点赞仍返回成功，但不重复增加 like_count" },
+      { id: "C", text: "重复点赞应该返回 409，强制前端自己处理" },
+      { id: "D", text: "数据库唯一索引和 OnConflict DoNothing 可以帮助识别是否真正插入" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "点赞接口按幂等语义设计：用户想表达的是“我已点赞”。如果原来没点赞，就插入并加计数；如果已经点赞，就直接返回 liked=true，不重复增加计数。",
+    explanation: "幂等让客户端重试更安全。网络抖动、按钮重复点击、Postman 重复执行都不会破坏计数。",
+    whyOthersWrong: {
+      C: "重复点赞不是业务冲突，而是同一目标状态的重复请求，因此当前模块返回成功。"
+    },
+    keyPoints: ["目标状态", "重复请求安全", "RowsAffected", "不重复计数"],
+    interviewTips: ["可以举例：用户连续点两次点赞按钮，后端最终状态仍然是一条点赞记录，like_count 只加一次。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "likes-transaction-1",
+    moduleId: "module-v2-likes",
+    type: "short",
+    title: "点赞为什么需要事务？",
+    prompt: "点赞成功时既要写 post_likes，又要更新 posts.like_count。为什么这两个操作要放在一个事务里？",
+    referenceAnswer: "因为点赞关系和帖子点赞数是同一个业务事实的两种存储形式。如果 post_likes 插入成功但 like_count 更新失败，列表展示的点赞数就会和真实关系不一致。事务保证两者同时成功或同时失败。",
+    explanation: "like_count 是冗余计数，读起来快，但写入时必须维护一致性。事务解决的是跨表写入的原子性问题。",
+    keyPoints: ["跨表更新", "冗余计数", "原子性", "失败回滚"],
+    interviewTips: ["回答时强调：真正插入成功才加计数，重复点赞不进入加计数逻辑。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "likes-unlike-1",
+    moduleId: "module-v2-likes",
+    type: "single",
+    title: "重复取消点赞应该怎么处理？",
+    prompt: "用户已经取消点赞后，再次调用 DELETE /api/v1/posts/:id/like，当前设计应该怎么返回？",
+    choices: [
+      { id: "A", text: "返回成功，liked=false，并且不继续减少 like_count" },
+      { id: "B", text: "一定返回 500" },
+      { id: "C", text: "继续把 like_count 减 1" },
+      { id: "D", text: "自动删除帖子" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "取消点赞也是幂等操作。用户表达的是“我不再点赞”。如果原来有点赞关系，就删除并扣计数；如果原来没有，仍返回 liked=false，不再扣计数。",
+    explanation: "幂等取消让客户端重试更安全，也避免 like_count 被重复扣成负数。",
+    whyOthersWrong: {
+      B: "重复取消是可预期请求，不应该当内部错误。",
+      C: "重复扣减会导致计数不一致。",
+      D: "取消点赞只影响点赞关系，不影响帖子本身。"
+    },
+    keyPoints: ["DELETE 幂等", "RowsAffected", "不重复扣计数", "like_count 不小于 0"],
+    interviewTips: ["可以补一句：Repository 删除返回 RowsAffected，Service 只有真的删除了关系才扣计数。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "likes-flow-1",
+    moduleId: "module-v2-likes",
+    type: "code",
+    title: "点赞请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/posts/:id/like 请求从路由到数据库发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，解析 Authorization 并把 user_id 写入 Gin Context。LikeController 解析帖子 id，读取当前 user_id，然后调用 LikeService。Service 先确认帖子存在且 published，再开启事务：PostLikeRepository 用唯一索引和 OnConflict DoNothing 插入点赞关系，如果 RowsAffected 表示新插入，就调用 PostRepository.IncrementLikeCount 让 like_count +1。事务成功后再查询当前 like_count，返回 liked=true。",
+    explanation: "这道题训练你把 Controller、Service、Repository 和事务串起来讲。重点不是背函数名，而是说清每层负责什么。",
+    keyPoints: ["JWT 中间件", "Controller 取 id 和 user_id", "Service 校验 published", "事务", "唯一索引", "like_count"],
+    interviewTips: ["面试时可以主动说：重复点赞时插入 RowsAffected=0，所以不会重复加 like_count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/like_controller.go", "backend/internal/service/like_service.go", "backend/internal/repository/post_like_repository.go"]
+  },
+  {
+    id: "comments-parent-1",
+    moduleId: "module-v2-comments",
+    type: "single",
+    title: "parent_id 如何表达评论层级？",
+    prompt: "FeedLab V2 评论表中 parent_id 的设计含义是什么？",
+    choices: [
+      { id: "A", text: "parent_id=0 表示一级评论，parent_id>0 表示回复某条一级评论" },
+      { id: "B", text: "parent_id 永远等于 post_id" },
+      { id: "C", text: "parent_id 用来保存 JWT 用户 ID" },
+      { id: "D", text: "parent_id 只用于物理删除评论" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "parent_id=0 表示这条评论直接挂在帖子下面，是一级评论；parent_id>0 表示这条评论是某个一级评论的二级回复。Service 会校验被回复的 parent comment 必须属于同一篇帖子，并且它本身必须是一级评论，从而限制只支持两层评论。",
+    explanation: "这是内容社区里常见的轻量层级建模。V2 不做无限嵌套，能让列表接口、计数和删除逻辑都更清晰。",
+    whyOthersWrong: {
+      B: "评论所属帖子由 post_id 表达，parent_id 表达评论之间的父子关系。",
+      C: "当前登录用户来自 JWT 中间件写入的上下文，不存在 parent_id 里。",
+      D: "parent_id 主要用于层级关系和级联软删除，不是物理删除标记。"
+    },
+    keyPoints: ["一级评论 parent_id=0", "二级回复 parent_id>0", "限制两层", "校验同一帖子"],
+    interviewTips: ["可以补一句：无限嵌套会让查询、分页和删除复杂很多，所以 V2 先用两层结构跑通社区评论闭环。"],
+    codeRefs: ["backend/internal/model/comment.go", "backend/internal/service/comment_service.go"]
+  },
+  {
+    id: "comments-transaction-1",
+    moduleId: "module-v2-comments",
+    type: "short",
+    title: "发布评论为什么需要事务？",
+    prompt: "发布评论时既要插入 comments，又要更新 posts.comment_count。为什么这两个操作必须放在事务里？",
+    referenceAnswer: "因为评论记录和帖子评论数描述的是同一个业务事实。如果 comments 插入成功但 comment_count 增加失败，帖子详情展示的评论数就会和真实评论列表不一致。事务保证插入评论和更新计数同时成功，任何一步失败都回滚。",
+    explanation: "comment_count 是冗余计数，读帖子详情时很方便，但写入时要承担维护一致性的责任。凡是多个表围绕一个业务动作一起变化，都应该优先考虑事务。",
+    keyPoints: ["跨表更新", "冗余计数", "原子性", "失败回滚", "数据一致性"],
+    interviewTips: ["回答时可以类比点赞模块：关系表和 count 字段要么一起变，要么都不变。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "comments-delete-1",
+    moduleId: "module-v2-comments",
+    type: "multiple",
+    title: "删除一级评论时应该发生什么？",
+    prompt: "关于 DELETE /api/v1/comments/:id 删除一级评论，哪些行为符合当前设计？",
+    choices: [
+      { id: "A", text: "软删除这条一级评论，保留 deleted_at 记录" },
+      { id: "B", text: "级联软删除它下面所有未删除的二级回复" },
+      { id: "C", text: "按实际软删除数量扣减 posts.comment_count" },
+      { id: "D", text: "任何登录用户都能删除别人的评论" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "删除一级评论时，会软删除一级评论本身和它下面未删除的回复，deleted_count 返回实际删除数量，并用这个数量扣减帖子 comment_count。权限上只有评论作者或 admin 能删除。",
+    explanation: "级联软删除能保证前台不再看到已经被删除的讨论串，同时保留数据用于审计、排错或后续后台能力。",
+    whyOthersWrong: {
+      D: "删除是写操作，必须做权限控制；当前只允许作者或 admin。"
+    },
+    keyPoints: ["软删除", "级联回复", "deleted_count", "comment_count 扣减", "作者或 admin"],
+    interviewTips: ["可以主动说：删除回复时只删回复自己；删除一级评论时才会级联处理它下面的回复。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comments-reply-to-user-1",
+    moduleId: "module-v2-comments",
+    type: "single",
+    title: "reply_to_user_id 为什么由后端设置？",
+    prompt: "发布回复时，reply_to_user_id 不让前端传，而是后端根据 parent comment 自动设置。核心原因是什么？",
+    choices: [
+      { id: "A", text: "后端能从被回复评论中得到真实作者，避免前端伪造回复对象" },
+      { id: "B", text: "因为 JSON 不能传 user_id" },
+      { id: "C", text: "因为 GORM 不支持 uint64 字段" },
+      { id: "D", text: "因为 reply_to_user_id 必须等于当前登录用户 ID" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "回复谁应该由被回复评论决定，而不是由前端随便提交。Service 查出 parent comment 后，用 parent.UserID 设置 reply_to_user_id，这样后续做通知、展示“回复某人”时更可信。",
+    explanation: "这是后端可信数据边界。前端负责表达用户动作，后端负责根据数据库事实补全关键关系字段。",
+    whyOthersWrong: {
+      B: "JSON 可以传数字字段。",
+      C: "GORM 支持 uint64。",
+      D: "reply_to_user_id 表示被回复的人，current user_id 表示发起回复的人，两者通常不同。"
+    },
+    keyPoints: ["后端可信", "避免伪造", "被回复评论作者", "通知扩展"],
+    interviewTips: ["可以说：V4 接 RabbitMQ 通知时，reply_to_user_id 就可以作为通知接收者依据。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/model/comment.go"]
+  },
+  {
+    id: "comments-flow-1",
+    moduleId: "module-v2-comments",
+    type: "code",
+    title: "发布回复的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/posts/:id/comments 且 parent_id>0 的请求发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，拿到当前 user_id。CommentController 解析 post id、绑定请求体，然后调用 CommentService.Create。Service 先裁剪 content 并确认帖子存在且 published；如果 parent_id>0，就查询 parent comment，校验它属于同一篇帖子、是一级评论并且状态 published，然后把 reply_to_user_id 设置为 parent.UserID。接着开启事务：插入 comments 记录，并调用 PostRepository.IncrementCommentCount 让帖子 comment_count +1。事务成功后再查回新评论，组装 VO 返回。",
+    explanation: "这道题把路由、中间件、Controller、Service、Repository、事务和 VO 都串起来了，是评论模块最适合练习的整体链路题。",
+    keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 业务校验", "两层评论限制", "事务", "VO 返回"],
+    interviewTips: ["回答时不要只说“插入数据库”，要讲清楚 parent comment 校验和 comment_count 维护，这是面试官真正想听的设计点。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/comment_controller.go", "backend/internal/service/comment_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comments-redis-mq-1",
+    moduleId: "module-v2-comments",
+    type: "short",
+    title: "为什么评论模块暂不接 Redis 和 RabbitMQ？",
+    prompt: "V2 评论模块已经能发布、查询和删除，为什么当前仍然不引入 Redis 缓存和 RabbitMQ 通知？",
+    referenceAnswer: "V2 的目标是先把互动业务的关系、权限、事务和计数一致性跑通。评论列表缓存属于读性能优化，适合 V3 在访问量上来后再做；评论通知是异步消息场景，适合 V4 统一接 RabbitMQ。提前引入会增加学习和排错复杂度，反而遮住本模块最核心的业务设计。",
+    explanation: "这是工程分阶段能力。先保证正确性，再做性能和异步化，能让项目演进路径更清楚。",
+    keyPoints: ["先正确再优化", "Redis 属于缓存优化", "RabbitMQ 属于异步通知", "降低 V2 复杂度"],
+    interviewTips: ["可以补一句：README 里明确写了当前不产生 Redis Key，也不投递 MQ，说明这是有意识的阶段性取舍。"],
+    codeRefs: ["README.md", "backend/internal/service/comment_service.go"]
+  },
+  {
+    id: "collects-vs-likes-1",
+    moduleId: "module-v2-collects",
+    type: "single",
+    title: "收藏和点赞的表结构为什么相似？",
+    prompt: "post_collects 和 post_likes 都使用 post_id + user_id 唯一索引，最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "它们本质都是用户和帖子之间的一条互动关系，同一用户对同一帖子只能有一条记录" },
+      { id: "B", text: "因为 MySQL 不允许普通索引" },
+      { id: "C", text: "因为 JWT 必须读取 post_collects" },
+      { id: "D", text: "因为收藏必须软删除" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "点赞和收藏都是用户与帖子之间的关系表。唯一索引保证同一个 user_id + post_id 组合只存在一次，能防止重复收藏，也能在并发请求下由数据库兜底。",
+    explanation: "这体现了关系建模能力：不同业务动作可能共享相似的数据模型，但响应字段和计数字段不同。",
+    whyOthersWrong: {
+      B: "MySQL 支持普通索引，唯一索引是业务约束选择。",
+      C: "JWT 只负责身份，和收藏关系表没有直接依赖。",
+      D: "当前取消收藏是物理删除关系记录，不使用软删除。"
+    },
+    keyPoints: ["关系表", "唯一索引", "防重复", "并发兜底"],
+    interviewTips: ["可以说：点赞代表态度，收藏代表保存，但数据库层都是 user-post relation。"],
+    codeRefs: ["backend/internal/model/post_collect.go", "backend/internal/model/post_like.go"]
+  },
+  {
+    id: "collects-idempotent-1",
+    moduleId: "module-v2-collects",
+    type: "multiple",
+    title: "收藏接口如何做到幂等？",
+    prompt: "关于 POST /api/v1/posts/:id/collect 和 DELETE /api/v1/posts/:id/collect，哪些说法正确？",
+    choices: [
+      { id: "A", text: "重复收藏仍返回成功，但不重复增加 collect_count" },
+      { id: "B", text: "重复取消收藏仍返回成功，但不继续减少 collect_count" },
+      { id: "C", text: "收藏关系插入成功时才让 posts.collect_count +1" },
+      { id: "D", text: "重复收藏必须返回 409 才叫幂等" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "收藏接口表达的是目标状态：我要收藏或我不再收藏。第一次收藏创建关系并增加计数；重复收藏直接返回 collected=true。取消同理，只有真的删除了关系才扣减计数。",
+    explanation: "幂等设计让按钮重复点击、客户端重试和网络抖动都不会破坏 collect_count。",
+    whyOthersWrong: {
+      D: "幂等并不要求返回 409；当前业务语义更适合重复请求返回成功。"
+    },
+    keyPoints: ["目标状态", "RowsAffected", "不重复计数", "重试安全"],
+    interviewTips: ["回答时强调：Service 根据 Repository 的 created/deleted 布尔值决定是否改 count。"],
+    codeRefs: ["backend/internal/service/collect_service.go", "backend/internal/repository/post_collect_repository.go"]
+  },
+  {
+    id: "collects-transaction-1",
+    moduleId: "module-v2-collects",
+    type: "short",
+    title: "收藏为什么也需要事务？",
+    prompt: "收藏成功时既写 post_collects，又更新 posts.collect_count。为什么这两个操作要放进事务？",
+    referenceAnswer: "因为收藏关系和收藏数是同一业务事实的两种存储。如果 post_collects 插入成功但 collect_count 更新失败，帖子详情里的收藏数就会和真实收藏关系不一致。事务保证两者同时成功或同时回滚。",
+    explanation: "collect_count 是冗余计数，提升读取效率的代价是写入时必须维护一致性。",
+    keyPoints: ["跨表更新", "冗余计数", "事务原子性", "一致性"],
+    interviewTips: ["可以把它和点赞、评论模块串起来讲：凡是关系表和 count 字段一起变，都要考虑事务。"],
+    codeRefs: ["backend/internal/service/collect_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "collects-list-1",
+    moduleId: "module-v2-collects",
+    type: "single",
+    title: "收藏列表为什么只返回 published 帖子？",
+    prompt: "GET /api/v1/users/:id/collects 只返回 published 帖子，主要是为了避免什么问题？",
+    choices: [
+      { id: "A", text: "避免草稿、隐藏或已删除内容通过收藏列表被公开看到" },
+      { id: "B", text: "因为收藏列表不能分页" },
+      { id: "C", text: "因为 GORM 不能 JOIN" },
+      { id: "D", text: "因为 collect_count 必须等于 0" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "收藏列表是公开接口，所以只展示 published 帖子，避免用户过去收藏过的草稿、隐藏内容或已删除内容被别人通过列表看到。",
+    explanation: "公开接口要尊重内容状态。关系存在不等于内容仍然可公开访问。",
+    whyOthersWrong: {
+      B: "当前接口支持 page/page_size 分页。",
+      C: "GORM 支持 JOIN，当前 Repository 就用了 JOIN。",
+      D: "collect_count 是帖子统计字段，不决定列表是否展示。"
+    },
+    keyPoints: ["公开接口", "内容状态", "published", "防止信息泄露"],
+    interviewTips: ["可以补一句：如果以后做用户自己的私有收藏夹，可以另开需要登录的接口。"],
+    codeRefs: ["backend/internal/repository/post_collect_repository.go"]
+  },
+  {
+    id: "collects-flow-1",
+    moduleId: "module-v2-collects",
+    type: "code",
+    title: "收藏请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/posts/:id/collect 请求从路由到数据库发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，把 user_id 写入 Gin Context。CollectController 解析 post id 并读取当前 user_id，然后调用 CollectService。Service 先确认帖子存在且 published，再开启事务：PostCollectRepository 使用唯一索引和 OnConflict DoNothing 插入收藏关系；如果 RowsAffected 表示新插入，就调用 PostRepository.IncrementCollectCount 让 collect_count +1。事务成功后查询当前 collect_count，返回 collected=true。",
+    explanation: "这道题训练你把收藏模块和点赞模块做对比。代码结构相似，但命名、响应字段和 count 字段对应收藏业务。",
+    keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 校验帖子", "事务", "唯一索引", "collect_count"],
+    interviewTips: ["面试时可以说：重复收藏时 RowsAffected=0，因此不会重复增加 collect_count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/collect_controller.go", "backend/internal/service/collect_service.go", "backend/internal/repository/post_collect_repository.go"]
+  },
+  {
+    id: "follows-relation-1",
+    moduleId: "module-v2-follows",
+    type: "single",
+    title: "user_follows 如何表达关注关系？",
+    prompt: "user_follows 表中 follower_id 和 followee_id 分别表示什么？",
+    choices: [
+      { id: "A", text: "follower_id 是发起关注的人，followee_id 是被关注的人" },
+      { id: "B", text: "follower_id 是帖子作者，followee_id 是帖子 ID" },
+      { id: "C", text: "两个字段永远相等" },
+      { id: "D", text: "followee_id 用来保存 JWT token" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "follower_id 表示谁在关注别人，followee_id 表示被谁关注。比如用户 1 关注用户 2，就是 follower_id=1, followee_id=2。",
+    explanation: "关注是用户到用户的有方向关系，字段命名要能表达方向，否则粉丝列表和关注列表很容易写反。",
+    whyOthersWrong: {
+      B: "关注关系不直接关联帖子。",
+      C: "两个字段相等代表自己关注自己，当前业务会禁止。",
+      D: "JWT token 不存关系表。"
+    },
+    keyPoints: ["有方向关系", "follower 发起方", "followee 被关注方", "粉丝/关注列表方向"],
+    interviewTips: ["可以画一句：A follow B，A 是 follower，B 是 followee。"],
+    codeRefs: ["backend/internal/model/user_follow.go", "backend/internal/repository/user_follow_repository.go"]
+  },
+  {
+    id: "follows-self-1",
+    moduleId: "module-v2-follows",
+    type: "single",
+    title: "为什么禁止自己关注自己？",
+    prompt: "当前关注模块中，用户关注自己会返回 40000。最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "自己关注自己没有业务意义，还会污染 follower_count 和 following_count" },
+      { id: "B", text: "因为 MySQL 不能存相同数字" },
+      { id: "C", text: "因为 JWT 无法解析自己的用户 ID" },
+      { id: "D", text: "因为公开列表不能返回用户信息" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "关注表达的是人与人之间的关系，自己关注自己没有实际意义。如果允许，会让粉丝数、关注数和列表展示变得奇怪，所以 Service 层直接拦截为 bad request。",
+    explanation: "这是业务规则，不是数据库限制。它应该放在 Service 层，而不是让 Controller 或 Repository 零散处理。",
+    whyOthersWrong: {
+      B: "MySQL 可以存相同数字，禁止自关是业务规则。",
+      C: "JWT 可以解析当前用户 ID。",
+      D: "公开列表返回的是 PublicUser，和自关规则不是一回事。"
+    },
+    keyPoints: ["业务规则", "Service 校验", "计数一致", "避免无意义关系"],
+    interviewTips: ["回答时可以顺带说：唯一索引防重复，Service 防自关，两者解决的问题不同。"],
+    codeRefs: ["backend/internal/service/follow_service.go"]
+  },
+  {
+    id: "follows-transaction-1",
+    moduleId: "module-v2-follows",
+    type: "short",
+    title: "关注为什么要维护两个计数？",
+    prompt: "用户 A 关注用户 B 时，为什么既要更新 A 的 following_count，又要更新 B 的 follower_count？为什么要放在事务里？",
+    referenceAnswer: "A 的 following_count 表示 A 关注了多少人，B 的 follower_count 表示 B 有多少粉丝。一次关注动作会同时改变这两个用户的统计值，也会写入 user_follows 关系表。它们描述同一个业务事实，所以必须放进事务，保证同时成功或同时回滚。",
+    explanation: "关注模块比点赞/收藏多一个点：它不是只改一个目标对象的 count，而是两个用户的 count 都要变。",
+    keyPoints: ["双用户计数", "关系表", "事务原子性", "一致性"],
+    interviewTips: ["可以说：如果关系插入成功但只更新了一个计数，就会出现用户主页统计不一致。"],
+    codeRefs: ["backend/internal/service/follow_service.go", "backend/internal/repository/user_repository.go"]
+  },
+  {
+    id: "follows-public-user-1",
+    moduleId: "module-v2-follows",
+    type: "multiple",
+    title: "为什么关注列表使用 PublicUser？",
+    prompt: "粉丝列表和关注列表是公开接口，使用 PublicUser VO。哪些说法合理？",
+    choices: [
+      { id: "A", text: "公开列表不应该暴露 email、role 等内部或敏感字段" },
+      { id: "B", text: "PublicUser 仍然可以展示 username、nickname、avatar_url、bio 和计数字段" },
+      { id: "C", text: "公开接口就必须返回 password_hash" },
+      { id: "D", text: "VO 可以把数据库模型和接口响应解耦" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "PublicUser 是面向公开展示的用户响应结构，保留主页展示需要的字段，去掉 email、role、password_hash 等不该公开的数据。",
+    explanation: "这是 VO 的价值：同一个 User model 在不同场景下可以有不同的响应形态。",
+    whyOthersWrong: {
+      C: "password_hash 永远不应该返回给前端。"
+    },
+    keyPoints: ["公开接口", "字段最小化", "VO 解耦", "保护隐私"],
+    interviewTips: ["可以和登录返回的 User VO 对比：当前用户看自己可以有 email，公开列表不需要。"],
+    codeRefs: ["backend/internal/vo/user.go", "backend/internal/service/follow_service.go"]
+  },
+  {
+    id: "follows-flow-1",
+    moduleId: "module-v2-follows",
+    type: "code",
+    title: "关注请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/users/:id/follow 请求发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，把当前 user_id 写入 Gin Context。FollowController 解析目标用户 id，并读取当前用户 id，然后调用 FollowService。Service 先禁止自己关注自己，再校验当前用户和目标用户都存在。接着开启事务：UserFollowRepository 用唯一索引和 OnConflict DoNothing 插入关注关系；如果真的新插入，就调用 UserRepository 同时让当前用户 following_count +1、目标用户 follower_count +1。事务成功后查回目标用户粉丝数，返回 followed=true。",
+    explanation: "这道题训练你讲清楚 Controller、Service、Repository、JWT 中间件、事务和幂等之间的关系。",
+    keyPoints: ["JWT 中间件", "禁止自关", "双方用户存在", "唯一索引", "双计数事务", "幂等"],
+    interviewTips: ["面试时可以强调：重复关注时 RowsAffected=0，所以不会重复增加两个计数。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/follow_controller.go", "backend/internal/service/follow_service.go", "backend/internal/repository/user_follow_repository.go"]
+  },
+  {
+    id: "comment-likes-relation-1",
+    moduleId: "module-v2-comment-likes",
+    type: "single",
+    title: "comment_likes 为什么要唯一索引？",
+    prompt: "comment_likes 表使用 comment_id + user_id 唯一索引，最核心的作用是什么？",
+    choices: [
+      { id: "A", text: "防止同一个用户对同一条评论插入多条点赞记录" },
+      { id: "B", text: "让评论自动变成一级评论" },
+      { id: "C", text: "让 JWT 自动续期" },
+      { id: "D", text: "让所有评论只能被一个用户点赞" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "comment_id + user_id 唯一索引保证同一用户对同一评论最多只有一条点赞关系。即使重复点击或并发请求同时到达，数据库也能兜底防止重复插入。",
+    explanation: "这和帖子点赞、收藏、关注的思路一样：应用层做幂等语义，数据库唯一索引做最终约束。",
+    whyOthersWrong: {
+      B: "评论层级由 parent_id 决定。",
+      C: "JWT 续期和评论点赞表无关。",
+      D: "唯一索引限制的是同一用户和同一评论的组合，不限制不同用户点赞同一评论。"
+    },
+    keyPoints: ["唯一索引", "关系表", "防重复", "并发兜底"],
+    interviewTips: ["可以说：如果只有先查再插，在并发下仍可能重复，唯一索引才是兜底。"],
+    codeRefs: ["backend/internal/model/comment_like.go", "backend/internal/repository/comment_like_repository.go"]
+  },
+  {
+    id: "comment-likes-transaction-1",
+    moduleId: "module-v2-comment-likes",
+    type: "short",
+    title: "评论点赞为什么需要事务？",
+    prompt: "评论点赞成功时既写 comment_likes，又更新 comments.like_count。为什么这两个操作要放进事务？",
+    referenceAnswer: "评论点赞关系和评论点赞数是同一个业务事实的两种存储。如果 comment_likes 插入成功但 comments.like_count 更新失败，评论展示的点赞数就会和真实点赞关系不一致。事务保证它们同时成功或同时回滚。",
+    explanation: "like_count 是冗余计数，读评论列表时很方便，但写入时必须维护一致性。",
+    keyPoints: ["跨表更新", "冗余计数", "事务原子性", "失败回滚"],
+    interviewTips: ["可以把它和帖子点赞类比：真正插入关系时才加 count，重复点赞不会加。"],
+    codeRefs: ["backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comment-likes-deleted-1",
+    moduleId: "module-v2-comment-likes",
+    type: "single",
+    title: "为什么删除后的评论不能点赞？",
+    prompt: "当前设计中，被软删除的评论再次点赞会返回 40400。这样做主要避免什么问题？",
+    choices: [
+      { id: "A", text: "避免不可见内容继续产生新的互动数据" },
+      { id: "B", text: "因为软删除会删除整张 comments 表" },
+      { id: "C", text: "因为 bcrypt 不能处理评论" },
+      { id: "D", text: "因为公开接口必须返回 500" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "软删除后的评论已经不应该出现在前台，也不应该继续产生点赞关系和 like_count 变化。Service 先确认评论存在且 published，软删除记录会被 GORM 默认过滤，因此返回 40400。",
+    explanation: "这是内容可见性和互动一致性问题：不可见内容不应该被继续互动。",
+    whyOthersWrong: {
+      B: "软删除只写 deleted_at，不会删除整张表。",
+      C: "bcrypt 只用于密码哈希。",
+      D: "资源不可见应返回 404，而不是内部错误。"
+    },
+    keyPoints: ["软删除", "可见性", "published", "40400"],
+    interviewTips: ["可以补一句：删除一级评论会级联软删除回复，这些回复也不能继续点赞。"],
+    codeRefs: ["backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "comment-likes-flow-1",
+    moduleId: "module-v2-comment-likes",
+    type: "code",
+    title: "评论点赞请求的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/comments/:id/like 请求发生了什么。",
+    referenceAnswer: "路由先经过 JWT 中间件，把 user_id 写入 Gin Context。CommentLikeController 解析 comment id 并读取当前 user_id，然后调用 CommentLikeService。Service 先确认评论存在且 published，再开启事务：CommentLikeRepository 用唯一索引和 OnConflict DoNothing 插入点赞关系；如果 RowsAffected 表示新插入，就调用 CommentRepository.IncrementLikeCount 让 comments.like_count +1。事务成功后查询当前 like_count，返回 liked=true。",
+    explanation: "这道题训练你把评论点赞和帖子点赞做类比，同时注意目标对象从 posts 换成 comments。",
+    keyPoints: ["JWT 中间件", "Controller 参数解析", "Service 校验评论", "事务", "唯一索引", "comments.like_count"],
+    interviewTips: ["面试时可以强调：重复点赞 RowsAffected=0，所以不会重复增加 like_count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/comment_like_controller.go", "backend/internal/service/comment_like_service.go", "backend/internal/repository/comment_like_repository.go"]
+  },
+  {
+    id: "public-profile-vo-1",
+    moduleId: "module-v2-public-profile",
+    type: "multiple",
+    title: "公开主页为什么用 PublicUser？",
+    prompt: "GET /api/v1/users/:id 返回 PublicUser，而不是直接返回 User model。哪些说法正确？",
+    choices: [
+      { id: "A", text: "可以避免把 email、role、status、password_hash 等字段暴露给访客" },
+      { id: "B", text: "可以保留主页需要的 username、nickname、avatar_url、bio 和计数字段" },
+      { id: "C", text: "公开接口必须返回数据库表的全部字段" },
+      { id: "D", text: "VO 能把数据库模型和接口响应解耦" }
+    ],
+    correctAnswers: ["A", "B", "D"],
+    referenceAnswer: "公开主页面向任何访客，只应该返回展示需要的字段。PublicUser 保留公开资料和计数字段，隐藏登录凭证、权限和内部状态字段。",
+    explanation: "这是接口设计中的最小暴露原则：数据库模型不是 API 合同，公开接口应该用专门的 VO 控制响应边界。",
+    whyOthersWrong: {
+      C: "直接返回全部字段会泄露不该公开的信息，也会让前端依赖数据库结构。"
+    },
+    keyPoints: ["PublicUser", "字段最小化", "隐私保护", "VO 解耦"],
+    interviewTips: ["可以说：当前用户看自己用 User VO，别人看主页用 PublicUser VO，场景不同响应不同。"],
+    codeRefs: ["backend/internal/vo/user.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "public-profile-posts-1",
+    moduleId: "module-v2-public-profile",
+    type: "single",
+    title: "为什么只返回 published 帖子？",
+    prompt: "GET /api/v1/users/:id/posts 为什么只查询 status=published 的帖子？",
+    choices: [
+      { id: "A", text: "草稿和已软删除内容不应该出现在公开主页" },
+      { id: "B", text: "MySQL 只能查询 published 字符串" },
+      { id: "C", text: "JWT 中间件会自动隐藏草稿" },
+      { id: "D", text: "因为公开主页接口必须经过登录" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "公开主页是给访客看的，只应该展示用户已经发布且仍可见的内容。草稿属于作者未公开内容，软删除内容也会被 GORM 默认过滤。",
+    explanation: "这是内容可见性边界：写入时允许 draft，读取公开列表时必须按业务状态过滤。",
+    whyOthersWrong: {
+      B: "MySQL 可以查询任何状态，过滤 published 是业务规则。",
+      C: "JWT 中间件只负责鉴权，不负责内容状态过滤。",
+      D: "公开主页和用户公开帖子列表不需要登录。"
+    },
+    keyPoints: ["published", "草稿不可见", "软删除过滤", "公开读取"],
+    interviewTips: ["可以和帖子详情接口类比：公开详情也只查 published。"],
+    codeRefs: ["backend/internal/repository/post_repository.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "public-profile-transaction-1",
+    moduleId: "module-v2-public-profile",
+    type: "short",
+    title: "公开主页为什么不需要事务？",
+    prompt: "用户公开主页和用户帖子列表都是读接口。为什么这里不需要像点赞、关注那样开启事务？",
+    referenceAnswer: "事务主要用于保证多个写操作的原子性，比如插入关系表同时更新计数字段。公开主页模块只读取 users 和 posts，不修改数据，也没有需要同时成功或回滚的跨表写入，因此不需要事务。",
+    explanation: "面试官常会看你是否滥用事务。读接口一般依靠查询条件和数据库默认隔离级别即可，除非有强一致读快照等特殊需求。",
+    keyPoints: ["读接口", "无跨表写入", "事务用于原子性", "避免滥用事务"],
+    interviewTips: ["可以补一句：如果未来做复杂报表一致性快照，才可能考虑显式事务或隔离级别。"],
+    codeRefs: ["backend/internal/service/user_service.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "public-profile-flow-1",
+    moduleId: "module-v2-public-profile",
+    type: "code",
+    title: "用户公开帖子列表的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/users/:id/posts?page=1&page_size=10 请求发生了什么。",
+    referenceAnswer: "请求进入 router 后匹配到 UserController.ListPosts。Controller 解析 path 中的 user id，并用 ShouldBindQuery 解析 page/page_size。然后调用 PostService.ListByUser。Service 先用 UserRepository.FindByID 确认用户存在，再设置默认分页参数。最后 PostRepository.ListPublishedByUser 查询该用户的 published 帖子并 Preload 作者信息，Service 组装 PostList VO，Controller 用统一响应返回。",
+    explanation: "这道题训练你把 Controller、Service、Repository 的职责讲清楚：Controller 管 HTTP，Service 管业务校验，Repository 管 SQL/GORM 查询。",
+    keyPoints: ["Controller 解析参数", "Service 校验用户存在", "Repository 查询 published", "分页", "VO 返回"],
+    interviewTips: ["面试时可以主动强调：这个接口是公开接口，所以不走 JWT 中间件。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/user_controller.go", "backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v2-review-pattern-1",
+    moduleId: "module-v2-review",
+    type: "multiple",
+    title: "V2 互动模块共同模式",
+    prompt: "帖子点赞、帖子收藏、用户关注、评论点赞这些模块有哪些共同设计？",
+    choices: [
+      { id: "A", text: "都使用关系表记录用户和目标资源之间的关系" },
+      { id: "B", text: "都用唯一索引防止重复关系" },
+      { id: "C", text: "都把关系写入和计数字段更新放进事务" },
+      { id: "D", text: "都必须使用 RabbitMQ 才能保证正确性" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "这些互动模块都用关系表表达用户和资源之间的关系，用唯一索引兜底幂等，并在 Service 层事务中同时维护关系表和计数字段。",
+    explanation: "V2 的重点是先用 MySQL 把业务正确性做好。RabbitMQ 更适合后续异步通知，不是 V2 正确性的必要条件。",
+    whyOthersWrong: {
+      D: "V2 没有接 RabbitMQ。当前正确性由 MySQL 唯一索引和事务保证。"
+    },
+    keyPoints: ["关系表", "唯一索引", "幂等", "事务", "计数一致性"],
+    interviewTips: ["面试时可以把点赞、收藏、关注放在一起讲，体现你能抽象项目模式。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/service/collect_service.go", "backend/internal/service/follow_service.go", "backend/internal/service/comment_like_service.go"]
+  },
+  {
+    id: "v2-review-transaction-1",
+    moduleId: "module-v2-review",
+    type: "short",
+    title: "怎么判断一个操作要不要事务？",
+    prompt: "请结合 FeedLab V2 说明：什么操作需要事务，什么操作不需要事务？",
+    referenceAnswer: "如果一个业务动作要同时修改多份数据，并且这些修改必须一起成功或一起失败，就需要事务。例如点赞要写 post_likes 并更新 posts.like_count，关注要写 user_follows 并更新两个用户的计数字段。只读查询如公开主页、列表、是否点赞查询不修改数据，一般不需要事务。",
+    explanation: "事务边界应该跟业务动作边界一致，不是每个函数都开事务，也不是只要查询两张表就必须开事务。",
+    keyPoints: ["多表写入", "原子性", "计数一致性", "只读接口不滥用事务"],
+    interviewTips: ["可以主动举两个正例和两个反例：点赞/关注需要，公开主页/帖子列表不需要。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/service/follow_service.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "v2-review-redis-mq-1",
+    moduleId: "module-v2-review",
+    type: "single",
+    title: "为什么 Redis 和 RabbitMQ 留到后续？",
+    prompt: "FeedLab V2 仍主要依赖 MySQL，没有把互动状态缓存到 Redis，也没有发送 RabbitMQ 通知。最合理的解释是什么？",
+    choices: [
+      { id: "A", text: "V2 先保证业务闭环和数据一致性，Redis/RabbitMQ 属于后续性能和异步化演进" },
+      { id: "B", text: "Gin 项目不能使用 Redis" },
+      { id: "C", text: "GORM 会自动把所有消息发到 RabbitMQ" },
+      { id: "D", text: "只要用了 MySQL，就永远不需要缓存和消息队列" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "V2 的目标是把互动关系、幂等、事务和计数维护做正确。Redis 更适合 V3 做热点缓存和排行榜，RabbitMQ 更适合 V4 做通知和异步事件。",
+    explanation: "这是项目迭代节奏：先正确，再优化，再异步化。面试时这样讲会比一上来堆组件更可信。",
+    whyOthersWrong: {
+      B: "Gin 可以正常使用 Redis。",
+      C: "GORM 不会自动发送 RabbitMQ 消息。",
+      D: "MySQL 是持久化基础，但高并发读、排行榜和通知仍可能需要缓存和消息队列。"
+    },
+    keyPoints: ["阶段演进", "先正确", "Redis 缓存", "RabbitMQ 通知"],
+    interviewTips: ["可以说：我没有为了堆技术而接组件，而是把它们放到合适版本解决合适问题。"],
+    codeRefs: ["README.md", "docs/feedlab-v2-interactions-code-guide.md"]
+  },
+  {
+    id: "v2-review-explain-1",
+    moduleId: "module-v2-review",
+    type: "code",
+    title: "用一段话介绍 V2",
+    prompt: "如果面试官让你介绍 FeedLab V2 的核心设计，你会怎么讲？",
+    referenceAnswer: "FeedLab V2 主要补齐社区互动能力。我把点赞、收藏、关注、评论点赞都设计成关系表加唯一索引，保证重复请求和并发请求下不会产生重复关系。涉及关系表和计数字段的写操作都放在 Service 层事务里完成，比如点赞时同时写 post_likes 并维护 posts.like_count。Controller 只负责 HTTP 参数和统一响应，Repository 只负责 GORM 查询。公开接口使用 VO 控制返回字段，比如 PublicUser 不暴露 email 和 role。V2 先用 MySQL 保证业务正确性，Redis 缓存和 RabbitMQ 通知放到后续版本演进。",
+    explanation: "这是一道表达题。重点不是逐行背代码，而是把设计动机、分层职责、一致性和演进路线讲完整。",
+    keyPoints: ["互动能力", "关系表", "唯一索引", "幂等", "事务", "VO", "Redis/RabbitMQ 演进"],
+    interviewTips: ["回答时控制在 60-90 秒，先讲整体，再举点赞或关注一个具体例子。"],
+    codeRefs: ["docs/feedlab-v2-interactions-code-guide.md", "backend/internal/router/router.go"]
   }
 ];

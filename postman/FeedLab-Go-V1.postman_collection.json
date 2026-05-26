@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "FeedLab Go V1",
-    "description": "FeedLab V1 Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 列表 -> 详情 -> 删除 -> Swagger 文档。",
+    "name": "FeedLab Go V1 + V2",
+    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 公开主页 -> 删除 -> Swagger 文档 -> V2 最终验收。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -26,7 +26,35 @@
       "value": ""
     },
     {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "target_username",
+      "value": ""
+    },
+    {
+      "key": "target_email",
+      "value": ""
+    },
+    {
+      "key": "target_user_id",
+      "value": ""
+    },
+    {
       "key": "post_id",
+      "value": ""
+    },
+    {
+      "key": "comment_id",
+      "value": ""
+    },
+    {
+      "key": "reply_id",
+      "value": ""
+    },
+    {
+      "key": "like_comment_id",
       "value": ""
     }
   ],
@@ -112,6 +140,9 @@
                   "const json = pm.response.json();",
                   "if (json.data && json.data.access_token) {",
                   "  pm.collectionVariables.set('access_token', json.data.access_token);",
+                  "}",
+                  "if (json.data && json.data.user && json.data.user.id) {",
+                  "  pm.collectionVariables.set('user_id', json.data.user.id);",
                   "}"
                 ]
               }
@@ -142,6 +173,61 @@
               ]
             },
             "description": "用注册阶段保存的 email/password 登录。Test 脚本会保存 access_token。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/auth/register - target user",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const suffix = Date.now();",
+                  "pm.collectionVariables.set('target_username', `target_${suffix}`);",
+                  "pm.collectionVariables.set('target_email', `target_${suffix}@feedlab.test`);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('target_user_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{target_username}}\",\n  \"email\": \"{{target_email}}\",\n  \"password\": \"{{password}}\",\n  \"nickname\": \"FeedLab Target\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "注册第二个目标用户，用于关注模块测试。Test 脚本会保存 target_user_id。"
           },
           "response": []
         },
@@ -273,7 +359,1182 @@
             "description": "查看刚创建的帖子详情，不需要 Token。"
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 4 - Likes",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "点赞刚创建的帖子。必须先执行登录和创建帖子。"
+          },
+          "response": []
         },
+        {
+          "name": "POST /api/v1/posts/:id/like - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "重复点赞幂等测试。预期仍成功，但 like_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id/liked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/liked",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "liked"
+              ]
+            },
+            "description": "查询当前用户是否点赞过该帖子。预期 liked=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/likes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/likes?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "likes"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看当前用户点赞过的 published 帖子列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/like",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "取消点赞。预期 liked=false，like_count 只在原本点赞时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/like - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "重复取消点赞幂等测试。预期仍成功，但 like_count 不继续减少。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 5 - Collects",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/collect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "收藏刚创建的帖子。必须先执行登录和创建帖子。预期 collected=true，collect_count 增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/collect - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "重复收藏幂等测试。预期仍成功，但 collect_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id/collected",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collected",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collected"
+              ]
+            },
+            "description": "查询当前用户是否收藏过该帖子。预期 collected=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/collects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/collects?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "collects"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看当前用户收藏过的 published 帖子列表。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/collect",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "取消收藏。预期 collected=false，collect_count 只在原本收藏时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id/collect - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "重复取消收藏幂等测试。预期仍成功，但 collect_count 不继续减少。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 6 - Follows",
+      "item": [
+        {
+          "name": "POST /api/v1/users/:id/follow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "当前用户关注目标用户。预期 followed=true，目标用户 follower_count 增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users/:id/follow - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "重复关注幂等测试。预期仍成功，但 follower_count/following_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/followed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/followed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "followed"
+              ]
+            },
+            "description": "查询当前用户是否关注目标用户。预期 followed=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/followers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/followers?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "followers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看目标用户粉丝列表。预期包含当前 user_id，且用户信息不包含 email/role。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/following",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/following?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "following"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看当前用户关注列表。预期包含 target_user_id，且用户信息不包含 email/role。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/users/:id/follow",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "取消关注目标用户。预期 followed=false，计数只在原本关注时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/users/:id/follow - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "重复取消关注幂等测试。预期仍成功，但 follower_count/following_count 不继续减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users/:id/follow - self should fail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "follow"
+              ]
+            },
+            "description": "尝试关注自己。预期返回 400，code=40000。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 7 - Comments",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/comments - root",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('comment_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是通过 Postman 创建的一级评论。\",\n  \"parent_id\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "发布一级评论。Test 脚本会保存 comment_id，posts.comment_count 应增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - reply",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('reply_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是通过 Postman 创建的二级回复。\",\n  \"parent_id\": {{comment_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "回复刚创建的一级评论。Test 脚本会保存 reply_id，posts.comment_count 应再次增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id/comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看帖子一级评论列表。预期包含 comment_id，不包含二级回复。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/comments/:id/replies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{comment_id}}/replies?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{comment_id}}",
+                "replies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查看一级评论下的二级回复。预期包含 reply_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id - reply",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{reply_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{reply_id}}"
+              ]
+            },
+            "description": "软删除刚创建的回复。预期 deleted_count=1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - reply before cascade",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('reply_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是删除一级评论前重新创建的回复。\",\n  \"parent_id\": {{comment_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "重新创建一条回复，用于测试删除一级评论时级联软删除未删除回复。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id - root cascade",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{comment_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{comment_id}}"
+              ]
+            },
+            "description": "软删除一级评论，并级联软删除它下面未删除的回复。预期 deleted_count 至少为 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id after comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "查看帖子详情，确认 comment_count 已按创建和删除评论的实际数量维护。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 8 - Comment Likes",
+      "item": [
+        {
+          "name": "POST /api/v1/posts/:id/comments - comment for like",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set('like_comment_id', json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"这是用于评论点赞模块测试的评论。\",\n  \"parent_id\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "为评论点赞模块单独创建一条评论。Test 脚本会保存 like_comment_id。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/comments/:id/like",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "点赞刚创建的评论。预期 liked=true，like_count 增加 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/comments/:id/like - idempotent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "重复点赞幂等测试。预期仍成功，但 like_count 不重复增加。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/comments/:id/liked",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/liked",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "liked"
+              ]
+            },
+            "description": "查询当前用户是否点赞过该评论。预期 liked=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id/like",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "取消评论点赞。预期 liked=false，like_count 只在原本点赞时减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id/like - idempotent",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}",
+                "like"
+              ]
+            },
+            "description": "重复取消评论点赞幂等测试。预期仍成功，但 like_count 不继续减少。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/comments/:id - cleanup like comment",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{like_comment_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{like_comment_id}}"
+              ]
+            },
+            "description": "清理评论点赞模块创建的评论。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 9 - Public Profile",
+      "item": [
+        {
+          "name": "GET /api/v1/users/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "查看当前用户的公开主页资料。预期不会返回 email、role、status、password_hash。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/posts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "posts"
+              ]
+            },
+            "description": "分页查看当前用户发布过的 published 帖子。预期列表包含前面创建的帖子。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id - target user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}"
+              ]
+            },
+            "description": "查看目标用户公开主页资料。公开用户信息只包含主页展示字段。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/posts - target user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "posts"
+              ]
+            },
+            "description": "查看目标用户公开帖子列表。目标用户没有发布帖子时 data.items 为空数组。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 10 - Cleanup",
+      "item": [
         {
           "name": "DELETE /api/v1/posts/:id",
           "request": {
@@ -296,14 +1557,68 @@
                 "{{post_id}}"
               ]
             },
-            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。"
+            "description": "软删除刚创建的帖子。只有作者或 admin 可以删除。删除后再次点赞或收藏该帖子应返回 404。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/like after delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "删除帖子后再次点赞，预期返回 40400。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/collect after delete",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/collect",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "collect"
+              ]
+            },
+            "description": "删除帖子后再次收藏，预期返回 40400。"
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Module 4 - Swagger",
+      "name": "Module 11 - Swagger",
       "item": [
         {
           "name": "GET /swagger/index.html",
@@ -340,6 +1655,70 @@
               ]
             },
             "description": "获取 OpenAPI 3.0 JSON 文档，可导入 Postman、Apifox 或 Swagger UI。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 12 - V2 Acceptance",
+      "item": [
+        {
+          "name": "GET /healthz - final",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "V2 完整流程跑完后再次检查 API、MySQL、Redis 是否仍可用。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id/posts after cleanup",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}/posts?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}",
+                "posts"
+              ]
+            },
+            "description": "删除帖子后再次查看用户公开帖子列表。预期刚删除的帖子不再出现在 published 列表中。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /swagger/doc.json - V2 final contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/swagger/doc.json",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger",
+                "doc.json"
+              ]
+            },
+            "description": "最终验收 OpenAPI 文档，确认 V2 点赞、评论、收藏、关注、评论点赞和公开主页接口都已纳入文档。"
           },
           "response": []
         }

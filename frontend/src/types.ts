@@ -27,6 +27,19 @@ export type User = {
 
 export type PublicUser = Omit<User, "email" | "role" | "status">;
 
+export type PublicUserList = {
+  items: PublicUser[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export type FollowStatus = {
+  user_id: number;
+  followed: boolean;
+  follower_count: number;
+};
+
 export type Author = {
   id: number;
   username: string;

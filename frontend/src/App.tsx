@@ -6,11 +6,13 @@ import type {
   CollectStatus,
   CreatePostPayload,
   DeleteCommentResult,
+  FollowStatus,
   HealthStatus,
   LikeStatus,
   LoginPayload,
   Post,
   PublicUser,
+  PublicUserList,
   RegisterPayload,
   User
 } from "./types";
@@ -18,6 +20,7 @@ import type {
 type AuthMode = "login" | "register";
 type Notice = { type: "success" | "error" | "info"; text: string } | null;
 type InteractionTarget = "like" | "collect";
+type FollowListMode = "followers" | "following";
 
 const defaultRegisterForm: RegisterPayload = {
   username: "",
@@ -78,6 +81,12 @@ function App() {
   const [profilePosts, setProfilePosts] = useState<Post[]>([]);
   const [profilePostTotal, setProfilePostTotal] = useState(0);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [followStatus, setFollowStatus] = useState<FollowStatus | null>(null);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [followListMode, setFollowListMode] = useState<FollowListMode>("followers");
+  const [followUsers, setFollowUsers] = useState<PublicUser[]>([]);
+  const [followUsersTotal, setFollowUsersTotal] = useState(0);
+  const [followUsersLoading, setFollowUsersLoading] = useState(false);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -117,6 +126,7 @@ function App() {
   useEffect(() => {
     if (!token) {
       setCommentLikeStatuses({});
+      setFollowStatus(null);
       return;
     }
     const ids = visibleCommentIDs(comments, repliesByComment);
@@ -124,6 +134,13 @@ function App() {
       void loadCommentLikeStatuses(ids, token);
     }
   }, [token, comments, repliesByComment]);
+
+  useEffect(() => {
+    if (!profileUser) {
+      return;
+    }
+    void loadFollowUsers(profileUser.id, followListMode);
+  }, [profileUser?.id, followListMode]);
 
   async function checkHealth() {
     setCheckingHealth(true);
@@ -324,6 +341,14 @@ function App() {
       setProfilePosts(postsResult.items);
       setProfilePostTotal(postsResult.total);
       setProfileUserIDInput(String(profile.id));
+      setFollowListMode("followers");
+      await loadFollowUsers(profile.id, "followers");
+      if (token && currentUser?.id !== profile.id) {
+        const status = await api.userFollowed(profile.id, token);
+        setFollowStatus(status);
+      } else {
+        setFollowStatus(null);
+      }
       setNotice({ type: "success", text: `已打开 @${profile.username} 的公开主页。` });
     } catch (error) {
       setNotice({ type: "error", text: formatError(error, "用户主页加载失败。") });
@@ -336,6 +361,56 @@ function App() {
     setProfileUser(null);
     setProfilePosts([]);
     setProfilePostTotal(0);
+    setFollowStatus(null);
+    setFollowUsers([]);
+    setFollowUsersTotal(0);
+    setFollowListMode("followers");
+  }
+
+  async function loadFollowUsers(userID: number, mode: FollowListMode) {
+    setFollowUsersLoading(true);
+    try {
+      const result: PublicUserList =
+        mode === "followers" ? await api.listFollowers(userID, 1, 10) : await api.listFollowing(userID, 1, 10);
+      setFollowUsers(result.items);
+      setFollowUsersTotal(result.total);
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "关注列表加载失败。") });
+    } finally {
+      setFollowUsersLoading(false);
+    }
+  }
+
+  async function toggleFollowUser() {
+    if (!profileUser) {
+      return;
+    }
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再关注用户。" });
+      return;
+    }
+    if (currentUser?.id === profileUser.id) {
+      setNotice({ type: "error", text: "不能关注自己。" });
+      return;
+    }
+
+    setFollowLoading(true);
+    setNotice(null);
+    try {
+      const result = followStatus?.followed
+        ? await api.unfollowUser(profileUser.id, token)
+        : await api.followUser(profileUser.id, token);
+      setFollowStatus(result);
+      setProfileUser((current) => (current ? { ...current, follower_count: result.follower_count } : current));
+      if (followListMode === "followers") {
+        await loadFollowUsers(profileUser.id, "followers");
+      }
+      setNotice({ type: "success", text: result.followed ? "关注成功。" : "已取消关注。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "关注操作失败。") });
+    } finally {
+      setFollowLoading(false);
+    }
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -884,10 +959,20 @@ function App() {
               total={profilePostTotal}
               loading={profileLoading}
               userIDInput={profileUserIDInput}
+              currentUser={currentUser}
+              followStatus={followStatus}
+              followLoading={followLoading}
+              followListMode={followListMode}
+              followUsers={followUsers}
+              followUsersTotal={followUsersTotal}
+              followUsersLoading={followUsersLoading}
               onUserIDInputChange={setProfileUserIDInput}
               onSearch={handleProfileSearch}
               onClose={closeUserProfile}
               onOpenPost={(postID) => void openPost(postID)}
+              onToggleFollow={() => void toggleFollowUser()}
+              onFollowListModeChange={setFollowListMode}
+              onOpenUser={(userID) => void openUserProfile(userID)}
             />
 
             {(detailLoading || selectedPost) && (
@@ -996,26 +1081,50 @@ function UserProfilePanel({
   total,
   loading,
   userIDInput,
+  currentUser,
+  followStatus,
+  followLoading,
+  followListMode,
+  followUsers,
+  followUsersTotal,
+  followUsersLoading,
   onUserIDInputChange,
   onSearch,
   onClose,
-  onOpenPost
+  onOpenPost,
+  onToggleFollow,
+  onFollowListModeChange,
+  onOpenUser
 }: {
   user: PublicUser | null;
   posts: Post[];
   total: number;
   loading: boolean;
   userIDInput: string;
+  currentUser: User | null;
+  followStatus: FollowStatus | null;
+  followLoading: boolean;
+  followListMode: FollowListMode;
+  followUsers: PublicUser[];
+  followUsersTotal: number;
+  followUsersLoading: boolean;
   onUserIDInputChange: (value: string) => void;
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
   onOpenPost: (postID: number) => void;
+  onToggleFollow: () => void;
+  onFollowListModeChange: (mode: FollowListMode) => void;
+  onOpenUser: (userID: number) => void;
 }) {
+  const isSelf = Boolean(user && currentUser?.id === user.id);
+  const canFollow = Boolean(user && currentUser && !isSelf);
+  const followerCount = followStatus?.follower_count ?? user?.follower_count ?? 0;
+
   return (
     <section className="profile-panel">
       <div className="profile-toolbar">
         <div>
-          <p className="eyebrow">Module 6</p>
+          <p className="eyebrow">Module 6-7</p>
           <h3>用户公开主页</h3>
         </div>
         {user && (
@@ -1052,6 +1161,13 @@ function UserProfilePanel({
             </div>
           </div>
 
+          <div className="profile-actions">
+            <button className="primary-button compact" type="button" onClick={onToggleFollow} disabled={!canFollow || followLoading}>
+              {isSelf ? "这是你自己" : followLoading ? "处理中..." : followStatus?.followed ? "取消关注" : "关注"}
+            </button>
+            {!currentUser && <span>登录后可以关注用户。</span>}
+          </div>
+
           <div className="profile-stats">
             <div>
               <span>帖子</span>
@@ -1059,12 +1175,50 @@ function UserProfilePanel({
             </div>
             <div>
               <span>粉丝</span>
-              <strong>{user.follower_count}</strong>
+              <strong>{followerCount}</strong>
             </div>
             <div>
               <span>关注</span>
               <strong>{user.following_count}</strong>
             </div>
+          </div>
+
+          <div className="follow-list-panel">
+            <div className="segmented compact-tabs">
+              <button
+                className={followListMode === "followers" ? "active" : ""}
+                type="button"
+                onClick={() => onFollowListModeChange("followers")}
+              >
+                粉丝
+              </button>
+              <button
+                className={followListMode === "following" ? "active" : ""}
+                type="button"
+                onClick={() => onFollowListModeChange("following")}
+              >
+                关注
+              </button>
+            </div>
+            <span className="follow-total">{followUsersTotal} 人</span>
+
+            {followUsersLoading ? (
+              <p className="empty-text">正在加载用户列表...</p>
+            ) : followUsers.length > 0 ? (
+              <div className="follow-user-list">
+                {followUsers.map((item) => (
+                  <button className="follow-user" type="button" key={item.id} onClick={() => onOpenUser(item.id)}>
+                    <span className="avatar tiny">{initialsFromName(item.nickname || item.username)}</span>
+                    <span>
+                      <strong>{item.nickname || item.username}</strong>
+                      <small>@{item.username}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="empty-text">{followListMode === "followers" ? "还没有粉丝。" : "还没有关注任何人。"}</p>
+            )}
           </div>
 
           <div className="profile-posts-header">

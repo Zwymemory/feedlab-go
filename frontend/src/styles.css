@@ -743,6 +743,20 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.profile-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.profile-actions span,
+.follow-total {
+  color: #617088;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .profile-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -771,6 +785,56 @@ textarea:focus {
 .profile-post-list {
   display: grid;
   gap: 10px;
+}
+
+.follow-list-panel {
+  padding: 12px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.compact-tabs {
+  width: 180px;
+}
+
+.follow-total {
+  display: block;
+  margin-top: 10px;
+}
+
+.follow-user-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.follow-user {
+  width: 100%;
+  min-height: 46px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #152033;
+  text-align: left;
+}
+
+.follow-user:hover:not(:disabled) {
+  border-color: #2f7dff;
+}
+
+.follow-user strong,
+.follow-user small {
+  display: block;
+}
+
+.follow-user small {
+  color: #617088;
+  font-weight: 700;
 }
 
 .profile-post {

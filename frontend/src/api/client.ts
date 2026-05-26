@@ -13,7 +13,9 @@ import type {
   LoginResult,
   Post,
   PostList,
+  FollowStatus,
   PublicUser,
+  PublicUserList,
   RegisterPayload,
   User
 } from "../types";
@@ -114,6 +116,35 @@ export const api = {
       page_size: String(pageSize)
     });
     return request<PostList>(`/api/v1/users/${userID}/posts?${params.toString()}`);
+  },
+  followUser(userID: number, token: string) {
+    return request<FollowStatus>(`/api/v1/users/${userID}/follow`, {
+      method: "POST",
+      token
+    });
+  },
+  unfollowUser(userID: number, token: string) {
+    return request<FollowStatus>(`/api/v1/users/${userID}/follow`, {
+      method: "DELETE",
+      token
+    });
+  },
+  userFollowed(userID: number, token: string) {
+    return request<FollowStatus>(`/api/v1/users/${userID}/followed`, { token });
+  },
+  listFollowers(userID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<PublicUserList>(`/api/v1/users/${userID}/followers?${params.toString()}`);
+  },
+  listFollowing(userID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<PublicUserList>(`/api/v1/users/${userID}/following?${params.toString()}`);
   },
   listPosts(page = 1, pageSize = 10) {
     const params = new URLSearchParams({

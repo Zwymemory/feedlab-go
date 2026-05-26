@@ -46,4 +46,10 @@ jwt:
 	if cfg.Redis.UserProfileTTLSeconds != 600 {
 		t.Fatalf("expected default user profile ttl seconds, got %d", cfg.Redis.UserProfileTTLSeconds)
 	}
+	if cfg.Redis.PostViewTTLSeconds != 86400 {
+		t.Fatalf("expected default post view ttl seconds, got %d", cfg.Redis.PostViewTTLSeconds)
+	}
+	if cfg.Redis.PostViewFlushThreshold != 100 {
+		t.Fatalf("expected default post view flush threshold, got %d", cfg.Redis.PostViewFlushThreshold)
+	}
 }

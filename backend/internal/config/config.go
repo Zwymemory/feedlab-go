@@ -36,11 +36,13 @@ type MySQLConfig struct {
 }
 
 type RedisConfig struct {
-	Addr                  string `yaml:"addr"`
-	Password              string `yaml:"password"`
-	DB                    int    `yaml:"db"`
-	PostDetailTTLSeconds  int    `yaml:"post_detail_ttl_seconds"`
-	UserProfileTTLSeconds int    `yaml:"user_profile_ttl_seconds"`
+	Addr                   string `yaml:"addr"`
+	Password               string `yaml:"password"`
+	DB                     int    `yaml:"db"`
+	PostDetailTTLSeconds   int    `yaml:"post_detail_ttl_seconds"`
+	UserProfileTTLSeconds  int    `yaml:"user_profile_ttl_seconds"`
+	PostViewTTLSeconds     int    `yaml:"post_view_ttl_seconds"`
+	PostViewFlushThreshold int    `yaml:"post_view_flush_threshold"`
 }
 
 type JWTConfig struct {
@@ -104,6 +106,12 @@ func (c *Config) withDefaults() {
 	}
 	if c.Redis.UserProfileTTLSeconds == 0 {
 		c.Redis.UserProfileTTLSeconds = 600
+	}
+	if c.Redis.PostViewTTLSeconds == 0 {
+		c.Redis.PostViewTTLSeconds = 86400
+	}
+	if c.Redis.PostViewFlushThreshold == 0 {
+		c.Redis.PostViewFlushThreshold = 100
 	}
 }
 

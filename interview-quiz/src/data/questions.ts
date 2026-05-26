@@ -105,6 +105,13 @@ export const modules: QuizModule[] = [
     subtitle: "cursor、created_at+id、无限滚动",
     accent: "#2563eb",
     summary: "理解信息流为什么更适合游标分页，以及 cursor 如何避免深页 offset 的性能和一致性问题。"
+  },
+  {
+    id: "module-v3-view-count",
+    title: "V3 模块 5：浏览量计数",
+    subtitle: "Redis INCR、批量落库、最终一致性",
+    accent: "#7c3aed",
+    summary: "理解为什么浏览量不适合每次访问都写 MySQL，以及 Redis 增量计数如何降低热门帖子写压力。"
   }
 ];
 
@@ -1282,5 +1289,75 @@ export const questions: Question[] = [
     keyPoints: ["PostController.Feed", "PostService.Feed", "decodeFeedCursor", "limit + 1", "ListFeedPublished", "next_cursor"],
     interviewTips: ["可以补一句：多查一条是为了判断是否还有下一页，不需要再额外 count。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-view-count-why-1",
+    moduleId: "module-v3-view-count",
+    type: "single",
+    title: "为什么浏览量先写 Redis？",
+    prompt: "FeedLab V3 访问帖子详情时先对 Redis Key `post:view_count:{post_id}` 做 INCR，而不是每次都直接更新 MySQL。最核心原因是什么？",
+    choices: [
+      { id: "A", text: "浏览量是高频写，Redis INCR 可以先承接增量，降低 MySQL 热点写压力" },
+      { id: "B", text: "MySQL 不能保存整数类型" },
+      { id: "C", text: "Redis 写入后一定比 MySQL 更可靠" },
+      { id: "D", text: "这样就不需要 posts.view_count 字段了" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "热门帖子详情可能被频繁访问，如果每次访问都 UPDATE MySQL，会形成热点写。Redis INCR 很适合做计数增量，达到阈值后再批量写回 MySQL，能降低数据库压力。",
+    explanation: "浏览量通常允许最终一致，不需要像支付余额那样强一致，所以适合 Redis 增量计数。",
+    whyOthersWrong: {
+      B: "MySQL 当然可以保存整数，问题是高频更新压力。",
+      C: "Redis 不是最终数据源，MySQL 仍负责最终持久化。",
+      D: "posts.view_count 仍然是最终落库字段。"
+    },
+    keyPoints: ["高频写", "Redis INCR", "热点写", "批量落库", "最终一致"],
+    interviewTips: ["可以说：浏览量是典型可以降频写库的计数字段。"],
+    codeRefs: ["backend/internal/cache/post_view_cache.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "v3-view-count-key-1",
+    moduleId: "module-v3-view-count",
+    type: "short",
+    title: "post:view_count:{post_id} 的用途和 TTL",
+    prompt: "请解释 Redis Key `post:view_count:{post_id}` 缓存什么、默认过期时间是多少、什么时候会落库。",
+    referenceAnswer: "`post:view_count:{post_id}` 保存某篇帖子尚未写回 MySQL 的浏览量增量。默认 TTL 是 86400 秒，可通过 redis.post_view_ttl_seconds 配置。每次帖子详情访问会 INCR 这个 Key；当增量达到 redis.post_view_flush_threshold，默认 100，后端会把增量批量写回 posts.view_count，并删除该 Key。",
+    explanation: "回答 Redis Key 时要同时说清楚 key 格式、value 内容、TTL 和失效/落库时机。",
+    keyPoints: ["post:view_count:{post_id}", "待落库增量", "默认 86400 秒", "默认阈值 100", "批量写回 MySQL"],
+    interviewTips: ["可以补一句：删除帖子时也要删除这个 Key，避免软删除内容残留临时计数。"],
+    codeRefs: ["backend/internal/cache/post_view_cache.go", "backend/config.yaml", "backend/internal/config/config.go"]
+  },
+  {
+    id: "v3-view-count-consistency-1",
+    moduleId: "module-v3-view-count",
+    type: "multiple",
+    title: "浏览量计数的一致性取舍",
+    prompt: "关于 V3 浏览量计数模块，下面哪些说法正确？",
+    choices: [
+      { id: "A", text: "接口响应会把 MySQL 中的 view_count 和 Redis 中的增量叠加展示" },
+      { id: "B", text: "达到阈值后会批量写回 MySQL" },
+      { id: "C", text: "这是最终一致性设计，不适合余额、库存等强一致场景" },
+      { id: "D", text: "Redis 失败时应该让帖子详情接口整体失败" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "FeedLab 的详情响应会叠加 Redis 增量；达到阈值后把增量批量落库。这是最终一致性设计，适合浏览量这类允许短暂误差的计数，不适合余额、库存。Redis 失败时不应该阻断详情主流程，因为 MySQL 仍是最终数据源。",
+    explanation: "缓存和计数优化通常要区分主流程和旁路能力：浏览量失败不应该影响用户阅读帖子。",
+    whyOthersWrong: {
+      D: "Redis 只是优化层，失败时可以降级为只返回 MySQL 中的 view_count。"
+    },
+    keyPoints: ["叠加展示", "阈值落库", "最终一致", "降级", "不适合强一致计数"],
+    interviewTips: ["面试时可以主动举反例：库存扣减不能这样随意最终一致。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-view-count-code-1",
+    moduleId: "module-v3-view-count",
+    type: "code",
+    title: "浏览量计数的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/posts/:id 如何更新浏览量。",
+    referenceAnswer: "请求进入 PostController.Detail，Controller 解析帖子 ID 后调用 PostService.Detail。Service 先尝试读取 post:detail:{id} 帖子详情缓存，命中则复制缓存 VO，未命中则查 MySQL 并写入详情缓存。随后 Service 调用 applyViewCount，对 PostViewCache.Increment 执行 Redis INCR，响应里的 view_count 加上 Redis 返回的增量。如果增量达到阈值，Service 使用 PostViewCache.Take 取出并删除增量，再调用 PostRepository.IncrementViewCount 批量写回 MySQL，同时删除旧帖子详情缓存。",
+    explanation: "这道题训练你讲清楚缓存命中路径和未命中路径都要计数，并说明为什么 Controller 和 Repository 不直接操作 Redis。",
+    keyPoints: ["PostController.Detail", "PostService.Detail", "PostViewCache.Increment", "applyViewCount", "Take", "IncrementViewCount"],
+    interviewTips: ["可以说：Service 层负责组合 Redis 计数和 MySQL 落库，保持 Controller 简洁。"],
+    codeRefs: ["backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/cache/post_view_cache.go", "backend/internal/repository/post_repository.go"]
   }
 ];

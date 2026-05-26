@@ -240,6 +240,20 @@ func (r *PostRepository) IncrementCommentCount(ctx context.Context, postID uint6
 	return nil
 }
 
+func (r *PostRepository) IncrementViewCount(ctx context.Context, postID uint64, delta int64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.Post{}).
+		Where("id = ? AND status = ?", postID, "published").
+		UpdateColumn("view_count", gorm.Expr("CASE WHEN view_count + ? < 0 THEN 0 ELSE view_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *PostRepository) UpdateHotScore(ctx context.Context, postID uint64, score float64) error {
 	result := r.db.WithContext(ctx).
 		Model(&model.Post{}).

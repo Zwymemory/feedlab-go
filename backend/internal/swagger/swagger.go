@@ -195,7 +195,7 @@ func paths() gin.H {
 			}),
 		},
 		"/api/v1/posts/{id}": gin.H{
-			"get":    operationWithID("posts", "Post detail", "Return a published post detail.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
+			"get":    operationWithID("posts", "Post detail", "Return a published post detail and increment Redis-backed view count.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
 			"delete": operationWithID("posts", "Delete post", "Soft delete a post. Only the author or admin can delete it.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),
 		},
 		"/api/v1/posts/hot": gin.H{

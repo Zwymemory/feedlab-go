@@ -23,3 +23,11 @@ func TestRankHotPostsKey(t *testing.T) {
 		t.Fatalf("unexpected hot posts key: %q", RankHotPostsKey)
 	}
 }
+
+func TestPostViewCountKey(t *testing.T) {
+	got := PostViewCountKey(42)
+	want := "post:view_count:42"
+	if got != want {
+		t.Fatalf("unexpected key: got %q want %q", got, want)
+	}
+}

@@ -20,6 +20,8 @@ redis:
   db: 0
   post_detail_ttl_seconds: 300
   user_profile_ttl_seconds: 600
+  post_view_ttl_seconds: 86400
+  post_view_flush_threshold: 100
 
 jwt:
   secret: "feedlab_v1_change_me"

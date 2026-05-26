@@ -2163,6 +2163,79 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 17 - V3 Redis Post View Count",
+      "item": [
+        {
+          "name": "GET /api/v1/posts/:id - increment view count once",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "V3 浏览量计数：访问帖子详情会 INCR Redis Key post:view_count:{post_id}。测试前可运行 redis-cli DEL post:view_count:${POST_ID}，请求后运行 redis-cli GET post:view_count:${POST_ID} 验证为 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id - increment view count again",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "再次访问同一帖子详情，post:view_count:{post_id} 应继续递增。可运行 redis-cli GET post:view_count:${POST_ID} 和 redis-cli TTL post:view_count:${POST_ID} 验证。"
+          },
+          "response": []
+        },
+        {
+          "name": "DELETE /api/v1/posts/:id - cleanup view count key",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}"
+              ]
+            },
+            "description": "删除帖子时会同时删除 post:view_count:{post_id}，避免已软删除帖子残留待落库浏览量。注意：这个请求会软删除帖子，请只在清理测试数据时执行。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

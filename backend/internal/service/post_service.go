@@ -19,15 +19,20 @@ import (
 )
 
 type PostService struct {
-	posts     *repository.PostRepository
-	users     *repository.UserRepository
-	postCache *cache.PostCache
-	userCache *cache.UserCache
-	hotPosts  *cache.HotPostCache
+	posts              *repository.PostRepository
+	users              *repository.UserRepository
+	postCache          *cache.PostCache
+	userCache          *cache.UserCache
+	hotPosts           *cache.HotPostCache
+	postViews          *cache.PostViewCache
+	viewFlushThreshold int64
 }
 
-func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, userCache *cache.UserCache, hotPosts *cache.HotPostCache) *PostService {
-	return &PostService{posts: posts, users: users, postCache: postCache, userCache: userCache, hotPosts: hotPosts}
+func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, userCache *cache.UserCache, hotPosts *cache.HotPostCache, postViews *cache.PostViewCache, viewFlushThreshold int64) *PostService {
+	if viewFlushThreshold <= 0 {
+		viewFlushThreshold = 100
+	}
+	return &PostService{posts: posts, users: users, postCache: postCache, userCache: userCache, hotPosts: hotPosts, postViews: postViews, viewFlushThreshold: viewFlushThreshold}
 }
 
 func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreatePostRequest) (*vo.Post, error) {
@@ -203,7 +208,9 @@ func (s *PostService) ListByUser(ctx context.Context, userID uint64, query dto.L
 
 func (s *PostService) Detail(ctx context.Context, id uint64) (*vo.Post, error) {
 	if cached, ok, err := s.postCache.Get(ctx, id); err == nil && ok {
-		return cached, nil
+		result := *cached
+		s.applyViewCount(ctx, &result)
+		return &result, nil
 	}
 
 	post, err := s.posts.FindPublishedByID(ctx, id)
@@ -215,6 +222,7 @@ func (s *PostService) Detail(ctx context.Context, id uint64) (*vo.Post, error) {
 	}
 	result := vo.NewPost(*post)
 	_ = s.postCache.Set(ctx, result)
+	s.applyViewCount(ctx, &result)
 	return &result, nil
 }
 
@@ -246,6 +254,7 @@ func (s *PostService) Delete(ctx context.Context, id uint64, currentUserID uint6
 		return err
 	}
 	_ = s.postCache.Delete(ctx, id)
+	_ = s.postViews.Delete(ctx, id)
 	_ = s.hotPosts.Remove(ctx, id)
 	if post.Status == "published" {
 		_ = s.userCache.DeletePublicProfile(ctx, post.UserID)
@@ -298,6 +307,30 @@ func (s *PostService) refreshHotPost(ctx context.Context, post model.Post) error
 	}
 	post.HotScore = score
 	return s.hotPosts.SetScore(ctx, post.ID, score)
+}
+
+func (s *PostService) applyViewCount(ctx context.Context, post *vo.Post) {
+	if post == nil || s.postViews == nil {
+		return
+	}
+
+	delta, err := s.postViews.Increment(ctx, post.ID)
+	if err != nil {
+		return
+	}
+	post.ViewCount += delta
+
+	if delta < s.viewFlushThreshold {
+		return
+	}
+	flushed, err := s.postViews.Take(ctx, post.ID)
+	if err != nil || flushed <= 0 {
+		return
+	}
+	if err := s.posts.IncrementViewCount(ctx, post.ID, flushed); err != nil {
+		return
+	}
+	_ = s.postCache.Delete(ctx, post.ID)
 }
 
 func encodeFeedCursor(post model.Post) string {

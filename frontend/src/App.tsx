@@ -413,7 +413,16 @@ function App() {
           : current
       );
       if (followListMode === "followers") {
-        await loadFollowUsers(profileUser.id, "followers");
+        setFollowUsers((items) => {
+          if (!currentUser || followingDelta === 0) {
+            return items;
+          }
+          if (followingDelta > 0) {
+            return items.some((item) => item.id === currentUser.id) ? items : [currentUser, ...items];
+          }
+          return items.filter((item) => item.id !== currentUser.id);
+        });
+        setFollowUsersTotal((total) => Math.max(0, total + followingDelta));
       }
       setNotice({ type: "success", text: result.followed ? "关注成功。" : "已取消关注。" });
     } catch (error) {

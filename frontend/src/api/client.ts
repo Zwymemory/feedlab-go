@@ -13,6 +13,7 @@ import type {
   LoginResult,
   Post,
   PostList,
+  PublicUser,
   RegisterPayload,
   User
 } from "../types";
@@ -103,6 +104,16 @@ export const api = {
   },
   me(token: string) {
     return request<User>("/api/v1/users/me", { token });
+  },
+  publicUser(userID: number) {
+    return request<PublicUser>(`/api/v1/users/${userID}`);
+  },
+  listUserPosts(userID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<PostList>(`/api/v1/users/${userID}/posts?${params.toString()}`);
   },
   listPosts(page = 1, pageSize = 10) {
     const params = new URLSearchParams({

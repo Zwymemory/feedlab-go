@@ -25,6 +25,8 @@ export type User = {
   created_at: string;
 };
 
+export type PublicUser = Omit<User, "email" | "role" | "status">;
+
 export type Author = {
   id: number;
   username: string;

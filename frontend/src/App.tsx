@@ -10,6 +10,7 @@ import type {
   LikeStatus,
   LoginPayload,
   Post,
+  PublicUser,
   RegisterPayload,
   User
 } from "./types";
@@ -72,6 +73,11 @@ function App() {
   const [commentLikeStatuses, setCommentLikeStatuses] = useState<Record<number, CommentLikeStatus>>({});
   const [commentLikeLoadingID, setCommentLikeLoadingID] = useState<number | null>(null);
   const [deletingCommentID, setDeletingCommentID] = useState<number | null>(null);
+  const [profileUserIDInput, setProfileUserIDInput] = useState("");
+  const [profileUser, setProfileUser] = useState<PublicUser | null>(null);
+  const [profilePosts, setProfilePosts] = useState<Post[]>([]);
+  const [profilePostTotal, setProfilePostTotal] = useState(0);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -304,6 +310,34 @@ function App() {
     );
   }
 
+  async function openUserProfile(userID: number) {
+    if (!Number.isFinite(userID) || userID <= 0) {
+      setNotice({ type: "error", text: "请输入有效的用户 ID。" });
+      return;
+    }
+
+    setProfileLoading(true);
+    setNotice(null);
+    try {
+      const [profile, postsResult] = await Promise.all([api.publicUser(userID), api.listUserPosts(userID, 1, 10)]);
+      setProfileUser(profile);
+      setProfilePosts(postsResult.items);
+      setProfilePostTotal(postsResult.total);
+      setProfileUserIDInput(String(profile.id));
+      setNotice({ type: "success", text: `已打开 @${profile.username} 的公开主页。` });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "用户主页加载失败。") });
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  function closeUserProfile() {
+    setProfileUser(null);
+    setProfilePosts([]);
+    setProfilePostTotal(0);
+  }
+
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -501,6 +535,11 @@ function App() {
     } finally {
       setCreatingReplyID(null);
     }
+  }
+
+  function handleProfileSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void openUserProfile(Number(profileUserIDInput));
   }
 
   async function toggleCommentLike(commentID: number) {
@@ -831,12 +870,25 @@ function App() {
                     post={post}
                     selected={selectedPost?.id === post.id}
                     onOpen={() => void openPost(post.id)}
+                    onOpenAuthor={() => void openUserProfile(post.author.id)}
                   />
                 ))}
               </div>
             ) : (
               <p className="empty-text">还没有公开帖子。登录后发布第一篇吧。</p>
             )}
+
+            <UserProfilePanel
+              user={profileUser}
+              posts={profilePosts}
+              total={profilePostTotal}
+              loading={profileLoading}
+              userIDInput={profileUserIDInput}
+              onUserIDInputChange={setProfileUserIDInput}
+              onSearch={handleProfileSearch}
+              onClose={closeUserProfile}
+              onOpenPost={(postID) => void openPost(postID)}
+            />
 
             {(detailLoading || selectedPost) && (
               <PostDetailPanel
@@ -846,6 +898,7 @@ function App() {
                 likeStatus={likeStatus}
                 collectStatus={collectStatus}
                 interactionLoading={interactionLoading}
+                onOpenAuthor={() => selectedPost && void openUserProfile(selectedPost.author.id)}
                 comments={comments}
                 commentTotal={commentTotal}
                 commentsLoading={commentsLoading}
@@ -878,6 +931,7 @@ function App() {
                 onCreateReply={(event, parentID) => void handleCreateReply(event, parentID)}
                 onToggleCommentLike={(commentID) => void toggleCommentLike(commentID)}
                 onDeleteComment={(comment) => void deleteComment(comment)}
+                onOpenCommentAuthor={(userID) => void openUserProfile(userID)}
               />
             )}
           </section>
@@ -898,12 +952,24 @@ function HealthItem({ label, value }: { label: string; value?: string }) {
   );
 }
 
-function PostCard({ post, selected, onOpen }: { post: Post; selected: boolean; onOpen: () => void }) {
+function PostCard({
+  post,
+  selected,
+  onOpen,
+  onOpenAuthor
+}: {
+  post: Post;
+  selected: boolean;
+  onOpen: () => void;
+  onOpenAuthor: () => void;
+}) {
   return (
     <article className={`post-card ${selected ? "selected" : ""}`}>
       <div className="post-card-header">
         <div>
-          <span className="post-author">@{post.author.username}</span>
+          <button className="link-button post-author" type="button" onClick={onOpenAuthor}>
+            @{post.author.username}
+          </button>
           <h3>{post.title}</h3>
         </div>
         <span className="post-id">#{post.id}</span>
@@ -924,6 +990,113 @@ function PostCard({ post, selected, onOpen }: { post: Post; selected: boolean; o
   );
 }
 
+function UserProfilePanel({
+  user,
+  posts,
+  total,
+  loading,
+  userIDInput,
+  onUserIDInputChange,
+  onSearch,
+  onClose,
+  onOpenPost
+}: {
+  user: PublicUser | null;
+  posts: Post[];
+  total: number;
+  loading: boolean;
+  userIDInput: string;
+  onUserIDInputChange: (value: string) => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+  onClose: () => void;
+  onOpenPost: (postID: number) => void;
+}) {
+  return (
+    <section className="profile-panel">
+      <div className="profile-toolbar">
+        <div>
+          <p className="eyebrow">Module 6</p>
+          <h3>用户公开主页</h3>
+        </div>
+        {user && (
+          <button className="icon-button" type="button" onClick={onClose} title="关闭用户主页">
+            ×
+          </button>
+        )}
+      </div>
+
+      <form className="profile-search" onSubmit={onSearch}>
+        <label>
+          <span>用户 ID</span>
+          <input
+            inputMode="numeric"
+            min="1"
+            placeholder="例如 1"
+            value={userIDInput}
+            onChange={(event) => onUserIDInputChange(event.target.value)}
+          />
+        </label>
+        <button className="secondary-button" type="submit" disabled={loading || !userIDInput.trim()}>
+          {loading ? "加载中..." : "打开主页"}
+        </button>
+      </form>
+
+      {user ? (
+        <div className="profile-content">
+          <div className="profile-hero">
+            <div className="avatar profile-avatar">{initialsFromName(user.nickname || user.username)}</div>
+            <div>
+              <h3>{user.nickname || user.username}</h3>
+              <span>@{user.username}</span>
+              <p>{user.bio || "这个用户还没有填写简介。"}</p>
+            </div>
+          </div>
+
+          <div className="profile-stats">
+            <div>
+              <span>帖子</span>
+              <strong>{user.post_count}</strong>
+            </div>
+            <div>
+              <span>粉丝</span>
+              <strong>{user.follower_count}</strong>
+            </div>
+            <div>
+              <span>关注</span>
+              <strong>{user.following_count}</strong>
+            </div>
+          </div>
+
+          <div className="profile-posts-header">
+            <h4>公开帖子</h4>
+            <span>{total} 篇</span>
+          </div>
+
+          {posts.length > 0 ? (
+            <div className="profile-post-list">
+              {posts.map((post) => (
+                <article className="profile-post" key={post.id}>
+                  <div>
+                    <h4>{post.title}</h4>
+                    <p>{post.content}</p>
+                  </div>
+                  <button className="text-button" type="button" onClick={() => onOpenPost(post.id)}>
+                    查看
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-text">这个用户还没有公开帖子。</p>
+          )}
+        </div>
+      ) : (
+        <p className="empty-text">点击帖子或评论里的作者名，或者输入用户 ID，可以查看公开主页。</p>
+      )}
+    </section>
+  );
+}
+
 function PostDetailPanel({
   post,
   loading,
@@ -931,6 +1104,7 @@ function PostDetailPanel({
   likeStatus,
   collectStatus,
   interactionLoading,
+  onOpenAuthor,
   comments,
   commentTotal,
   commentsLoading,
@@ -956,7 +1130,8 @@ function PostDetailPanel({
   onReplyDraftChange,
   onCreateReply,
   onToggleCommentLike,
-  onDeleteComment
+  onDeleteComment,
+  onOpenCommentAuthor
 }: {
   post: Post | null;
   loading: boolean;
@@ -964,6 +1139,7 @@ function PostDetailPanel({
   likeStatus: LikeStatus | null;
   collectStatus: CollectStatus | null;
   interactionLoading: InteractionTarget | null;
+  onOpenAuthor: () => void;
   comments: Comment[];
   commentTotal: number;
   commentsLoading: boolean;
@@ -990,6 +1166,7 @@ function PostDetailPanel({
   onCreateReply: (event: FormEvent<HTMLFormElement>, parentID: number) => void;
   onToggleCommentLike: (commentID: number) => void;
   onDeleteComment: (comment: Comment) => void;
+  onOpenCommentAuthor: (userID: number) => void;
 }) {
   if (loading && !post) {
     return (
@@ -1024,7 +1201,9 @@ function PostDetailPanel({
         <div className="avatar small">{initialsFromName(post.author.nickname || post.author.username)}</div>
         <div>
           <strong>{post.author.nickname || post.author.username}</strong>
-          <span>@{post.author.username}</span>
+          <button className="link-button" type="button" onClick={onOpenAuthor}>
+            @{post.author.username}
+          </button>
         </div>
         <time>{formatDate(post.created_at)}</time>
       </div>
@@ -1086,6 +1265,7 @@ function PostDetailPanel({
         onCreateReply={onCreateReply}
         onToggleCommentLike={onToggleCommentLike}
         onDeleteComment={onDeleteComment}
+        onOpenAuthor={onOpenCommentAuthor}
       />
     </section>
   );
@@ -1115,7 +1295,8 @@ function CommentSection({
   onReplyDraftChange,
   onCreateReply,
   onToggleCommentLike,
-  onDeleteComment
+  onDeleteComment,
+  onOpenAuthor
 }: {
   loggedIn: boolean;
   comments: Comment[];
@@ -1141,6 +1322,7 @@ function CommentSection({
   onCreateReply: (event: FormEvent<HTMLFormElement>, parentID: number) => void;
   onToggleCommentLike: (commentID: number) => void;
   onDeleteComment: (comment: Comment) => void;
+  onOpenAuthor: (userID: number) => void;
 }) {
   return (
     <section className="comments-section">
@@ -1193,6 +1375,7 @@ function CommentSection({
               onCreateReply={(event) => onCreateReply(event, comment.id)}
               onToggleCommentLike={onToggleCommentLike}
               onDeleteComment={onDeleteComment}
+              onOpenAuthor={onOpenAuthor}
             />
           ))}
         </div>
@@ -1220,7 +1403,8 @@ function CommentItem({
   onReplyDraftChange,
   onCreateReply,
   onToggleCommentLike,
-  onDeleteComment
+  onDeleteComment,
+  onOpenAuthor
 }: {
   comment: Comment;
   loggedIn: boolean;
@@ -1239,6 +1423,7 @@ function CommentItem({
   onCreateReply: (event: FormEvent<HTMLFormElement>) => void;
   onToggleCommentLike: (commentID: number) => void;
   onDeleteComment: (comment: Comment) => void;
+  onOpenAuthor: (userID: number) => void;
 }) {
   const canDelete = canDeleteComment(currentUser, comment);
 
@@ -1253,6 +1438,7 @@ function CommentItem({
         deleting={deletingCommentID === comment.id}
         onToggleLike={() => onToggleCommentLike(comment.id)}
         onDelete={() => onDeleteComment(comment)}
+        onOpenAuthor={() => onOpenAuthor(comment.author.id)}
       />
       <div className="comment-actions">
         <button className="text-button" type="button" onClick={onToggleReplies}>
@@ -1292,6 +1478,7 @@ function CommentItem({
                     deleting={deletingCommentID === reply.id}
                     onToggleLike={() => onToggleCommentLike(reply.id)}
                     onDelete={() => onDeleteComment(reply)}
+                    onOpenAuthor={() => onOpenAuthor(reply.author.id)}
                   />
                 </article>
               ))}
@@ -1313,7 +1500,8 @@ function CommentBody({
   likeLoading,
   deleting,
   onToggleLike,
-  onDelete
+  onDelete,
+  onOpenAuthor
 }: {
   comment: Comment;
   loggedIn: boolean;
@@ -1323,6 +1511,7 @@ function CommentBody({
   deleting: boolean;
   onToggleLike: () => void;
   onDelete: () => void;
+  onOpenAuthor: () => void;
 }) {
   const liked = likeStatus?.liked ?? false;
   const likeCount = likeStatus?.like_count ?? comment.like_count;
@@ -1333,7 +1522,9 @@ function CommentBody({
         <div className="avatar tiny">{initialsFromName(comment.author.nickname || comment.author.username)}</div>
         <div>
           <strong>{comment.author.nickname || comment.author.username}</strong>
-          <span>@{comment.author.username}</span>
+          <button className="link-button" type="button" onClick={onOpenAuthor}>
+            @{comment.author.username}
+          </button>
         </div>
         <time>{formatDate(comment.created_at)}</time>
       </div>

@@ -195,7 +195,8 @@ label span {
 }
 
 .icon-button,
-.text-button {
+.text-button,
+.link-button {
   border: 1px solid #cbd5df;
   background: #ffffff;
   color: #152033;
@@ -212,6 +213,20 @@ label span {
 .text-button {
   padding: 0 12px;
   font-weight: 700;
+}
+
+.link-button {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #617088;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.link-button:hover:not(:disabled) {
+  color: #2f7dff;
 }
 
 .health-list {
@@ -653,6 +668,125 @@ textarea:focus {
 
 .detail-hint {
   margin: 12px 0 0;
+}
+
+.profile-panel {
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid #d9e0e8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.profile-toolbar,
+.profile-search,
+.profile-hero,
+.profile-posts-header,
+.profile-post {
+  display: flex;
+  align-items: center;
+}
+
+.profile-toolbar,
+.profile-posts-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-toolbar h3,
+.profile-posts-header h4,
+.profile-post h4 {
+  margin: 0;
+}
+
+.profile-search {
+  margin-top: 14px;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.profile-search label {
+  flex: 1 1 0;
+}
+
+.profile-content {
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.profile-hero {
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.profile-avatar {
+  width: 52px;
+  height: 52px;
+}
+
+.profile-hero h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.profile-hero span,
+.profile-hero p,
+.profile-posts-header span {
+  color: #617088;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-hero p {
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-stats div {
+  padding: 12px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.profile-stats span {
+  color: #617088;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.profile-stats strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 20px;
+}
+
+.profile-post-list {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-post {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.profile-post p {
+  margin: 6px 0 0;
+  color: #617088;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
 }
 
 .comments-section {

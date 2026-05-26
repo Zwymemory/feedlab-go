@@ -2034,6 +2034,135 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 16 - V3 Feed Cursor Pagination",
+      "item": [
+        {
+          "name": "GET /api/v1/feed/posts - first page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"response is success\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(0);",
+                  "});",
+                  "",
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.next_cursor) {",
+                  "  pm.collectionVariables.set(\"feed_next_cursor\", json.data.next_cursor);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/feed/posts?limit=2",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "feed",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "V3 Feed 游标分页第一页。响应 data.next_cursor 会保存到 collection variable feed_next_cursor，供下一页请求使用。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/feed/posts - next page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/feed/posts?limit=2&cursor={{feed_next_cursor}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "feed",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2"
+                },
+                {
+                  "key": "cursor",
+                  "value": "{{feed_next_cursor}}"
+                }
+              ]
+            },
+            "description": "V3 Feed 游标分页下一页。客户端不解析 cursor，只把上一页返回的 next_cursor 原样传回后端。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/feed/posts - invalid cursor",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"invalid cursor returns 40000\", function () {",
+                  "  pm.response.to.have.status(400);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(40000);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/feed/posts?limit=2&cursor=invalid-cursor",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "feed",
+                "posts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2"
+                },
+                {
+                  "key": "cursor",
+                  "value": "invalid-cursor"
+                }
+              ]
+            },
+            "description": "非法 cursor 应返回 400，业务 code 为 40000。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

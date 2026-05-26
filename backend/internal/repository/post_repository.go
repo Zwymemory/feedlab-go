@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"feedlab/backend/internal/model"
 
@@ -76,6 +77,26 @@ func (r *PostRepository) ListPublished(ctx context.Context, page int, pageSize i
 		return nil, 0, err
 	}
 	return posts, total, nil
+}
+
+func (r *PostRepository) ListFeedPublished(ctx context.Context, cursorTime *time.Time, cursorID uint64, limit int) ([]model.Post, error) {
+	query := r.db.WithContext(ctx).
+		Preload("User").
+		Where("status = ?", "published")
+	if cursorTime != nil && cursorID > 0 {
+		query = query.Where("created_at < ? OR (created_at = ? AND id < ?)", *cursorTime, *cursorTime, cursorID)
+	}
+
+	var posts []model.Post
+	err := query.
+		Order("created_at DESC").
+		Order("id DESC").
+		Limit(limit).
+		Find(&posts).Error
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
 }
 
 func (r *PostRepository) ListHotPublished(ctx context.Context, limit int) ([]model.Post, error) {

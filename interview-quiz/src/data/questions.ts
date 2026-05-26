@@ -98,6 +98,13 @@ export const modules: QuizModule[] = [
     subtitle: "Redis ZSet、热度分、Top N、冷启动",
     accent: "#f97316",
     summary: "理解 Redis ZSet 如何承载热门帖子排序，以及互动行为如何刷新排行榜分数。"
+  },
+  {
+    id: "module-v3-feed-cursor",
+    title: "V3 模块 4：Feed 游标分页",
+    subtitle: "cursor、created_at+id、无限滚动",
+    accent: "#2563eb",
+    summary: "理解信息流为什么更适合游标分页，以及 cursor 如何避免深页 offset 的性能和一致性问题。"
   }
 ];
 
@@ -1208,5 +1215,72 @@ export const questions: Question[] = [
     keyPoints: ["PostController.Hot", "HotPostCache.Top", "rank:hot_posts", "FindPublishedByIDs", "MySQL 兜底", "回填 ZSet"],
     interviewTips: ["可以补一句：冷启动兜底能让本地测试和新环境部署时接口不返回空。"],
     codeRefs: ["backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/cache/hot_post_cache.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-feed-cursor-why-1",
+    moduleId: "module-v3-feed-cursor",
+    type: "single",
+    title: "Feed 为什么更适合游标分页？",
+    prompt: "FeedLab 新增 GET /api/v1/feed/posts?cursor=&limit=10。相比 page/page_size，游标分页最核心的优势是什么？",
+    choices: [
+      { id: "A", text: "游标分页可以减少深页 offset 跳过大量记录，并降低新内容插入导致重复或漏查的概率" },
+      { id: "B", text: "游标分页一定不需要数据库索引" },
+      { id: "C", text: "游标分页可以自动替代 JWT 鉴权" },
+      { id: "D", text: "游标分页会把所有帖子一次性返回给前端" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "Feed 信息流通常是向下无限滚动。page/page_size 在深页时 offset 越来越大，数据库要跳过更多记录；同时如果期间有新帖子插入，翻页边界容易变化。游标分页用上一页最后一条记录作为边界，下一页只查更早的数据，更适合无限滚动。",
+    explanation: "游标分页不是为了替代所有分页，而是适合时间线、消息流、信息流这类连续向后加载的场景。",
+    whyOthersWrong: {
+      B: "游标分页仍然依赖合适的排序字段和索引设计。",
+      C: "分页和鉴权是两件事，本接口是公开 Feed，不涉及 JWT。",
+      D: "游标分页每次只返回 limit 条数据。"
+    },
+    keyPoints: ["无限滚动", "深页 offset", "稳定边界", "避免重复/漏查", "limit"],
+    interviewTips: ["可以用一句话总结：page 是按页号找位置，cursor 是按上一页最后一条记录找下一段。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-feed-cursor-fields-1",
+    moduleId: "module-v3-feed-cursor",
+    type: "short",
+    title: "cursor 为什么包含 created_at 和 id？",
+    prompt: "FeedLab 的 cursor 由上一页最后一条帖子的 created_at 和 id 组成。请解释为什么不只用 created_at。",
+    referenceAnswer: "帖子列表按 created_at DESC, id DESC 排序。created_at 表示时间边界，但多个帖子可能拥有相同创建时间，所以还需要 id 作为稳定的第二排序字段。下一页查询使用 created_at 更早，或 created_at 相同但 id 更小的记录，能避免边界处重复或漏查。",
+    explanation: "任何游标分页都要保证排序字段能形成稳定顺序。created_at + id 是常见组合：时间负责业务顺序，id 负责唯一兜底。",
+    keyPoints: ["created_at DESC", "id DESC", "相同时间", "稳定排序", "边界条件"],
+    interviewTips: ["面试表达可以说：cursor 必须和 order by 字段一致，否则下一页边界会不稳定。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-feed-cursor-response-1",
+    moduleId: "module-v3-feed-cursor",
+    type: "multiple",
+    title: "Feed 响应字段怎么理解？",
+    prompt: "GET /api/v1/feed/posts 的响应 data 中包含 items、next_cursor、has_more、limit。下面哪些说法正确？",
+    choices: [
+      { id: "A", text: "items 是当前页帖子列表" },
+      { id: "B", text: "next_cursor 由后端生成，客户端只需要原样透传" },
+      { id: "C", text: "has_more 表示是否还有下一页" },
+      { id: "D", text: "limit 表示本次请求实际使用的分页大小" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "items 是当前页数据；next_cursor 是下一页游标，客户端不应该解析它；has_more 告诉前端是否继续展示加载更多；limit 是本次实际使用的条数，默认 10，最大 50。",
+    explanation: "好的 API 响应会让前端不需要猜测分页状态。后端负责生成游标，前端负责保存和传回游标。",
+    keyPoints: ["items", "next_cursor", "has_more", "limit", "客户端透传"],
+    interviewTips: ["可以强调：cursor 是后端契约的一部分，不应该让前端依赖内部编码格式。"],
+    codeRefs: ["backend/internal/vo/post.go", "backend/internal/controller/post_controller.go"]
+  },
+  {
+    id: "v3-feed-cursor-code-1",
+    moduleId: "module-v3-feed-cursor",
+    type: "code",
+    title: "Feed 游标分页的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/feed/posts?limit=10&cursor=xxx 请求发生了什么。",
+    referenceAnswer: "请求进入 router 后匹配到 PostController.Feed。Controller 绑定 cursor 和 limit 参数，调用 PostService.Feed。Service 设置默认 limit，解析 cursor 得到上一页最后一条的 created_at 和 id，然后多查一条数据判断是否 has_more。Repository.ListFeedPublished 根据 published 状态和游标边界查询 MySQL，按 created_at DESC, id DESC 排序。Service 最后把 posts 转成 VO，并用最后一条返回数据生成 next_cursor。",
+    explanation: "这道题训练你讲清楚 Controller-Service-Repository 分层：Controller 管 HTTP，Service 管分页业务规则，Repository 管 SQL 条件。",
+    keyPoints: ["PostController.Feed", "PostService.Feed", "decodeFeedCursor", "limit + 1", "ListFeedPublished", "next_cursor"],
+    interviewTips: ["可以补一句：多查一条是为了判断是否还有下一页，不需要再额外 count。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
   }
 ];

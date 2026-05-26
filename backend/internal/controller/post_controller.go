@@ -80,6 +80,32 @@ func (p *PostController) List(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// Feed godoc
+// @Summary Cursor feed posts
+// @Description List published posts by cursor for infinite-scroll feed.
+// @Tags feed
+// @Produce json
+// @Param cursor query string false "cursor returned by previous request"
+// @Param limit query int false "max number of feed posts"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Router /api/v1/feed/posts [get]
+func (p *PostController) Feed(c *gin.Context) {
+	var query dto.ListFeedPostsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid query", nil)
+		return
+	}
+
+	result, err := p.postService.Feed(c.Request.Context(), query)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}
+
 // Hot godoc
 // @Summary List hot posts
 // @Description List hot published posts from Redis ZSet with MySQL fallback.

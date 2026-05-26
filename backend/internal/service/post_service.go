@@ -2,8 +2,12 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
@@ -102,6 +106,40 @@ func (s *PostService) List(ctx context.Context, query dto.ListPostsQuery) (*vo.P
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
+	}, nil
+}
+
+func (s *PostService) Feed(ctx context.Context, query dto.ListFeedPostsQuery) (*vo.FeedPostList, error) {
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	cursorTime, cursorID, err := decodeFeedCursor(query.Cursor)
+	if err != nil {
+		return nil, ErrBadRequest
+	}
+
+	posts, err := s.posts.ListFeedPublished(ctx, cursorTime, cursorID, limit+1)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := len(posts) > limit
+	if hasMore {
+		posts = posts[:limit]
+	}
+
+	nextCursor := ""
+	if hasMore && len(posts) > 0 {
+		nextCursor = encodeFeedCursor(posts[len(posts)-1])
+	}
+
+	return &vo.FeedPostList{
+		Items:      vo.NewPosts(posts),
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+		Limit:      limit,
 	}, nil
 }
 
@@ -260,4 +298,37 @@ func (s *PostService) refreshHotPost(ctx context.Context, post model.Post) error
 	}
 	post.HotScore = score
 	return s.hotPosts.SetScore(ctx, post.ID, score)
+}
+
+func encodeFeedCursor(post model.Post) string {
+	raw := fmt.Sprintf("%d:%d", post.CreatedAt.UnixNano(), post.ID)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+func decodeFeedCursor(cursor string) (*time.Time, uint64, error) {
+	if strings.TrimSpace(cursor) == "" {
+		return nil, 0, nil
+	}
+
+	body, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	parts := strings.SplitN(string(body), ":", 2)
+	if len(parts) != 2 {
+		return nil, 0, ErrBadRequest
+	}
+
+	createdAtNano, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || createdAtNano <= 0 {
+		return nil, 0, ErrBadRequest
+	}
+	postID, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil || postID == 0 {
+		return nil, 0, ErrBadRequest
+	}
+
+	createdAt := time.Unix(0, createdAtNano)
+	return &createdAt, postID, nil
 }

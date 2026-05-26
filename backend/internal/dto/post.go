@@ -17,6 +17,11 @@ type ListHotPostsQuery struct {
 	Limit int `form:"limit" binding:"omitempty,min=1,max=50"`
 }
 
+type ListFeedPostsQuery struct {
+	Cursor string `form:"cursor" binding:"omitempty"`
+	Limit  int    `form:"limit" binding:"omitempty,min=1,max=50"`
+}
+
 type ListUserLikesQuery struct {
 	Page     int `form:"page" binding:"omitempty,min=1"`
 	PageSize int `form:"page_size" binding:"omitempty,min=1,max=50"`

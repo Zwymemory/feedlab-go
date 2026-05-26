@@ -38,6 +38,13 @@ type PostList struct {
 	Total    int64  `json:"total"`
 }
 
+type FeedPostList struct {
+	Items      []Post `json:"items"`
+	NextCursor string `json:"next_cursor"`
+	HasMore    bool   `json:"has_more"`
+	Limit      int    `json:"limit"`
+}
+
 type LikeStatus struct {
 	PostID    uint64 `json:"post_id"`
 	Liked     bool   `json:"liked"`

@@ -93,6 +93,9 @@ func New(deps Dependencies) *gin.Engine {
 	api.GET("/users/:id/followed", authMiddleware.RequireAuth(), followController.IsFollowed)
 	api.GET("/users/:id", userController.PublicProfile)
 
+	feed := api.Group("/feed")
+	feed.GET("/posts", postController.Feed)
+
 	posts := api.Group("/posts")
 	posts.GET("", postController.List)
 	posts.GET("/hot", postController.Hot)

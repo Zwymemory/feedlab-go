@@ -41,6 +41,7 @@ func spec() gin.H {
 			{"name": "auth", "description": "Register and login"},
 			{"name": "users", "description": "Current and public user APIs"},
 			{"name": "posts", "description": "Post publishing and reading"},
+			{"name": "feed", "description": "Cursor-based post feed"},
 			{"name": "likes", "description": "Post like interactions"},
 			{"name": "collects", "description": "Post collect interactions"},
 			{"name": "follows", "description": "User follow relationships"},
@@ -187,6 +188,12 @@ func paths() gin.H {
 				"status":       "published",
 			}, bearerSecurity(), responseMap("201", "created", "400", "invalid request", "401", "invalid token")),
 		},
+		"/api/v1/feed/posts": gin.H{
+			"get": operationWithParameters("feed", "Cursor feed posts", "List published posts by cursor for infinite-scroll feed.", nil, responseMap("200", "success", "400", "invalid query"), []gin.H{
+				stringQueryParameter("cursor", "Cursor returned by previous request."),
+				queryParameter("limit", "Max number of feed posts, default 10, max 50.", 10, 1, 50),
+			}),
+		},
 		"/api/v1/posts/{id}": gin.H{
 			"get":    operationWithID("posts", "Post detail", "Return a published post detail.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
 			"delete": operationWithID("posts", "Delete post", "Soft delete a post. Only the author or admin can delete it.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),
@@ -312,6 +319,18 @@ func queryParameter(name string, description string, example int, minimum int, m
 		"required":    false,
 		"description": description,
 		"schema":      schema,
+	}
+}
+
+func stringQueryParameter(name string, description string) gin.H {
+	return gin.H{
+		"name":        name,
+		"in":          "query",
+		"required":    false,
+		"description": description,
+		"schema": gin.H{
+			"type": "string",
+		},
 	}
 }
 

@@ -2,7 +2,7 @@
 
 这是 FeedLab 的前端演示项目，目标是把后端 V1/V2 接口串成一个可以操作的作品展示界面。
 
-当前是前端模块 1：
+当前已完成：
 
 - Vite + React + TypeScript 项目骨架。
 - 统一 API Client，开发环境默认通过 Vite proxy 转发到 `http://localhost:8080`，避免浏览器 CORS 问题。
@@ -11,13 +11,16 @@
 - 登录：`POST /api/v1/auth/login`。
 - 当前用户：`GET /api/v1/users/me`。
 - JWT access token 保存到 `localStorage`，退出登录时清除。
+- 帖子流：`GET /api/v1/posts?page=1&page_size=10`。
+- 发布帖子：`POST /api/v1/posts`。
 
 ## 为什么这样设计
 
 - 前端单独放在 `frontend/`，和 `backend/` 并列，后续可以独立构建和部署。
 - API 调用集中在 `src/api/client.ts`，避免每个页面重复写 `fetch`、统一响应解析和 Token Header。
 - 登录态先用 `localStorage`，足够支撑本地演示；后续如果做生产级安全，可以再改成更严格的 Cookie / Refresh Token 方案。
-- 模块 1 只做认证闭环，后续模块再接入帖子流、发帖、详情、点赞、收藏、评论和用户主页。
+- 模块 1 先做认证闭环，模块 2 接入帖子流和发帖；后续模块再接入详情、点赞、收藏、评论和用户主页。
+- 帖子列表是公开读取接口，不需要登录；发布帖子必须携带 JWT，前端从 `localStorage` 读取 Token 后通过 `Authorization: Bearer <token>` 发送。
 
 ## 启动方式
 
@@ -61,6 +64,9 @@ VITE_API_PROXY_TARGET=http://localhost:8080
 4. 点击登录，确认左侧显示当前用户信息和 Token 预览。
 5. 刷新页面，确认登录态仍可从 `localStorage` 恢复。
 6. 点击退出，确认 Token 和当前用户信息被清除。
+7. 在“帖子流与发布”区域填写标题和正文，点击发布帖子。
+8. 发布成功后确认帖子列表刷新，并且左侧当前用户的发帖数更新。
+9. 退出登录后确认帖子列表仍可查看，但发布按钮不可用。
 
 ## 当前验证命令
 

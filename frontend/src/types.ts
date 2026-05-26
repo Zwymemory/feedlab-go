@@ -25,6 +25,46 @@ export type User = {
   created_at: string;
 };
 
+export type Author = {
+  id: number;
+  username: string;
+  nickname: string;
+  avatar_url: string;
+};
+
+export type Post = {
+  id: number;
+  user_id: number;
+  title: string;
+  content: string;
+  cover_url: string;
+  content_type: "article" | "image" | "video";
+  status: "draft" | "published";
+  view_count: number;
+  like_count: number;
+  comment_count: number;
+  collect_count: number;
+  hot_score: number;
+  created_at: string;
+  updated_at: string;
+  author: Author;
+};
+
+export type PostList = {
+  items: Post[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export type CreatePostPayload = {
+  title: string;
+  content: string;
+  cover_url: string;
+  content_type: "article";
+  status: "draft" | "published";
+};
+
 export type LoginResult = {
   access_token: string;
   token_type: string;

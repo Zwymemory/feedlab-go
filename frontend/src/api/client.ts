@@ -1,8 +1,11 @@
 import type {
   ApiResponse,
+  CreatePostPayload,
   HealthStatus,
   LoginPayload,
   LoginResult,
+  Post,
+  PostList,
   RegisterPayload,
   User
 } from "../types";
@@ -93,5 +96,19 @@ export const api = {
   },
   me(token: string) {
     return request<User>("/api/v1/users/me", { token });
+  },
+  listPosts(page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<PostList>(`/api/v1/posts?${params.toString()}`);
+  },
+  createPost(payload: CreatePostPayload, token: string) {
+    return request<Post>("/api/v1/posts", {
+      method: "POST",
+      body: payload,
+      token
+    });
   }
 };

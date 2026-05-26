@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError, tokenStore } from "./api/client";
-import type { HealthStatus, LoginPayload, RegisterPayload, User } from "./types";
+import type { CreatePostPayload, HealthStatus, LoginPayload, Post, RegisterPayload, User } from "./types";
 
 type AuthMode = "login" | "register";
 type Notice = { type: "success" | "error" | "info"; text: string } | null;
@@ -17,6 +17,14 @@ const defaultLoginForm: LoginPayload = {
   password: "secret123"
 };
 
+const defaultPostForm: CreatePostPayload = {
+  title: "",
+  content: "",
+  cover_url: "",
+  content_type: "article",
+  status: "published"
+};
+
 function App() {
   const [mode, setMode] = useState<AuthMode>("login");
   const [registerForm, setRegisterForm] = useState<RegisterPayload>(defaultRegisterForm);
@@ -27,6 +35,11 @@ function App() {
   const [notice, setNotice] = useState<Notice>(null);
   const [loading, setLoading] = useState(false);
   const [checkingHealth, setCheckingHealth] = useState(false);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [postTotal, setPostTotal] = useState(0);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postForm, setPostForm] = useState<CreatePostPayload>(defaultPostForm);
+  const [creatingPost, setCreatingPost] = useState(false);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -37,6 +50,7 @@ function App() {
 
   useEffect(() => {
     void checkHealth();
+    void loadPosts();
   }, []);
 
   useEffect(() => {
@@ -68,6 +82,19 @@ function App() {
       tokenStore.clear();
       setToken(null);
       setNotice({ type: "error", text: formatError(error, "登录态已失效，请重新登录。") });
+    }
+  }
+
+  async function loadPosts() {
+    setPostsLoading(true);
+    try {
+      const result = await api.listPosts(1, 10);
+      setPosts(result.items);
+      setPostTotal(result.total);
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "帖子流加载失败。") });
+    } finally {
+      setPostsLoading(false);
     }
   }
 
@@ -112,6 +139,28 @@ function App() {
     setToken(null);
     setCurrentUser(null);
     setNotice({ type: "info", text: "已退出登录，本地 Token 已清除。" });
+  }
+
+  async function handleCreatePost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再发布帖子。" });
+      return;
+    }
+
+    setCreatingPost(true);
+    setNotice(null);
+    try {
+      const created = await api.createPost(postForm, token);
+      setPostForm(defaultPostForm);
+      setNotice({ type: "success", text: `帖子发布成功：${created.title}` });
+      await loadPosts();
+      await loadMe(token);
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "发布帖子失败。") });
+    } finally {
+      setCreatingPost(false);
+    }
   }
 
   return (
@@ -192,111 +241,169 @@ function App() {
           </div>
         </aside>
 
-        <section className="auth-panel">
-          <div className="panel-header">
-            <div>
-              <p className="eyebrow">Module 1</p>
-              <h2>注册与登录</h2>
+        <section className="main-stack">
+          <section className="auth-panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Module 1</p>
+                <h2>注册与登录</h2>
+              </div>
+              <div className="segmented">
+                <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>
+                  登录
+                </button>
+                <button className={mode === "register" ? "active" : ""} type="button" onClick={() => setMode("register")}>
+                  注册
+                </button>
+              </div>
             </div>
-            <div className="segmented">
-              <button className={mode === "login" ? "active" : ""} type="button" onClick={() => setMode("login")}>
-                登录
-              </button>
-              <button className={mode === "register" ? "active" : ""} type="button" onClick={() => setMode("register")}>
-                注册
-              </button>
-            </div>
-          </div>
 
-          {notice && <p className={`notice ${notice.type}`}>{notice.text}</p>}
+            {notice && <p className={`notice ${notice.type}`}>{notice.text}</p>}
 
-          {mode === "login" ? (
-            <form className="form-stack" onSubmit={handleLogin}>
-              <label>
-                <span>邮箱</span>
-                <input
-                  type="email"
-                  value={loginForm.email}
-                  placeholder="alice@example.com"
-                  onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
-                  required
-                />
-              </label>
-              <label>
-                <span>密码</span>
-                <input
-                  type="password"
-                  value={loginForm.password}
-                  minLength={6}
-                  onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
-                  required
-                />
-              </label>
-              <button className="primary-button" type="submit" disabled={loading}>
-                {loading ? "登录中..." : "登录并保存 Token"}
-              </button>
-            </form>
-          ) : (
-            <form className="form-stack" onSubmit={handleRegister}>
-              <div className="form-row">
+            {mode === "login" ? (
+              <form className="form-stack" onSubmit={handleLogin}>
                 <label>
-                  <span>用户名</span>
+                  <span>邮箱</span>
                   <input
-                    value={registerForm.username}
-                    minLength={3}
-                    maxLength={50}
-                    placeholder="alice"
-                    onChange={(event) => setRegisterForm({ ...registerForm, username: event.target.value })}
+                    type="email"
+                    value={loginForm.email}
+                    placeholder="alice@example.com"
+                    onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
                     required
                   />
                 </label>
                 <label>
-                  <span>昵称</span>
+                  <span>密码</span>
                   <input
-                    value={registerForm.nickname}
-                    maxLength={50}
-                    placeholder="Alice"
-                    onChange={(event) => setRegisterForm({ ...registerForm, nickname: event.target.value })}
+                    type="password"
+                    value={loginForm.password}
+                    minLength={6}
+                    onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                    required
                   />
+                </label>
+                <button className="primary-button" type="submit" disabled={loading}>
+                  {loading ? "登录中..." : "登录并保存 Token"}
+                </button>
+              </form>
+            ) : (
+              <form className="form-stack" onSubmit={handleRegister}>
+                <div className="form-row">
+                  <label>
+                    <span>用户名</span>
+                    <input
+                      value={registerForm.username}
+                      minLength={3}
+                      maxLength={50}
+                      placeholder="alice"
+                      onChange={(event) => setRegisterForm({ ...registerForm, username: event.target.value })}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>昵称</span>
+                    <input
+                      value={registerForm.nickname}
+                      maxLength={50}
+                      placeholder="Alice"
+                      onChange={(event) => setRegisterForm({ ...registerForm, nickname: event.target.value })}
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span>邮箱</span>
+                  <input
+                    type="email"
+                    value={registerForm.email}
+                    placeholder="alice@example.com"
+                    onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>密码</span>
+                  <input
+                    type="password"
+                    value={registerForm.password}
+                    minLength={6}
+                    maxLength={72}
+                    onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })}
+                    required
+                  />
+                </label>
+                <button className="primary-button" type="submit" disabled={loading}>
+                  {loading ? "注册中..." : "创建账号"}
+                </button>
+              </form>
+            )}
+          </section>
+
+          <section className="posts-panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Module 2</p>
+                <h2>帖子流与发布</h2>
+              </div>
+              <button className="text-button" type="button" onClick={loadPosts} disabled={postsLoading}>
+                {postsLoading ? "刷新中" : "刷新"}
+              </button>
+            </div>
+
+            <form className="post-form" onSubmit={handleCreatePost}>
+              <div className="form-row">
+                <label>
+                  <span>标题</span>
+                  <input
+                    value={postForm.title}
+                    maxLength={120}
+                    placeholder="写一篇 FeedLab 帖子"
+                    onChange={(event) => setPostForm({ ...postForm, title: event.target.value })}
+                    required
+                  />
+                </label>
+                <label className="status-field">
+                  <span>状态</span>
+                  <select
+                    value={postForm.status}
+                    onChange={(event) => setPostForm({ ...postForm, status: event.target.value as CreatePostPayload["status"] })}
+                  >
+                    <option value="published">发布</option>
+                    <option value="draft">草稿</option>
+                  </select>
                 </label>
               </div>
               <label>
-                <span>邮箱</span>
-                <input
-                  type="email"
-                  value={registerForm.email}
-                  placeholder="alice@example.com"
-                  onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })}
+                <span>正文</span>
+                <textarea
+                  value={postForm.content}
+                  minLength={1}
+                  placeholder={token ? "分享一点你正在构建的东西。" : "登录后可以发布帖子。"}
+                  onChange={(event) => setPostForm({ ...postForm, content: event.target.value })}
                   required
                 />
               </label>
-              <label>
-                <span>密码</span>
-                <input
-                  type="password"
-                  value={registerForm.password}
-                  minLength={6}
-                  maxLength={72}
-                  onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })}
-                  required
-                />
-              </label>
-              <button className="primary-button" type="submit" disabled={loading}>
-                {loading ? "注册中..." : "创建账号"}
+              <button className="primary-button" type="submit" disabled={creatingPost || !token}>
+                {creatingPost ? "发布中..." : token ? "发布帖子" : "请先登录"}
               </button>
             </form>
-          )}
 
-          <div className="next-steps">
-            <h3>下一模块会接入</h3>
-            <div className="step-list">
-              <span>帖子流</span>
-              <span>发帖</span>
-              <span>详情</span>
-              <span>点赞/收藏</span>
-              <span>评论</span>
+            <div className="feed-header">
+              <h3>公开帖子</h3>
+              <span>{postTotal} 篇</span>
             </div>
-          </div>
+
+            {postsLoading ? (
+              <p className="empty-text">正在加载帖子流...</p>
+            ) : posts.length > 0 ? (
+              <div className="post-list">
+                {posts.map((post) => (
+                  <PostCard key={post.id} post={post} />
+                ))}
+              </div>
+            ) : (
+              <p className="empty-text">还没有公开帖子。登录后发布第一篇吧。</p>
+            )}
+          </section>
         </section>
       </section>
     </main>
@@ -314,9 +421,39 @@ function HealthItem({ label, value }: { label: string; value?: string }) {
   );
 }
 
+function PostCard({ post }: { post: Post }) {
+  return (
+    <article className="post-card">
+      <div className="post-card-header">
+        <div>
+          <span className="post-author">@{post.author.username}</span>
+          <h3>{post.title}</h3>
+        </div>
+        <span className="post-id">#{post.id}</span>
+      </div>
+      <p>{post.content}</p>
+      <div className="post-meta">
+        <span>{formatDate(post.created_at)}</span>
+        <span>{post.like_count} 赞</span>
+        <span>{post.collect_count} 收藏</span>
+        <span>{post.comment_count} 评论</span>
+      </div>
+    </article>
+  );
+}
+
 function initials(user: User) {
   const source = user.nickname || user.username;
   return source.slice(0, 2).toUpperCase();
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 function formatError(error: unknown, fallback: string) {

@@ -52,4 +52,7 @@ jwt:
 	if cfg.Redis.PostViewFlushThreshold != 100 {
 		t.Fatalf("expected default post view flush threshold, got %d", cfg.Redis.PostViewFlushThreshold)
 	}
+	if cfg.Redis.CommentListTTLSeconds != 120 {
+		t.Fatalf("expected default comment list ttl seconds, got %d", cfg.Redis.CommentListTTLSeconds)
+	}
 }

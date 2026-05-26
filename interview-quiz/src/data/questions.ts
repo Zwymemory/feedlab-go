@@ -112,6 +112,13 @@ export const modules: QuizModule[] = [
     subtitle: "Redis INCR、批量落库、最终一致性",
     accent: "#7c3aed",
     summary: "理解为什么浏览量不适合每次访问都写 MySQL，以及 Redis 增量计数如何降低热门帖子写压力。"
+  },
+  {
+    id: "module-v3-comment-cache",
+    title: "V3 模块 6：评论列表缓存",
+    subtitle: "分页 Key、列表缓存、写后失效",
+    accent: "#0891b2",
+    summary: "理解评论列表为什么适合短 TTL 缓存，以及创建、删除、点赞如何触发分页列表缓存失效。"
   }
 ];
 
@@ -1359,5 +1366,72 @@ export const questions: Question[] = [
     keyPoints: ["PostController.Detail", "PostService.Detail", "PostViewCache.Increment", "applyViewCount", "Take", "IncrementViewCount"],
     interviewTips: ["可以说：Service 层负责组合 Redis 计数和 MySQL 落库，保持 Controller 简洁。"],
     codeRefs: ["backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/cache/post_view_cache.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-comment-cache-key-1",
+    moduleId: "module-v3-comment-cache",
+    type: "single",
+    title: "评论列表缓存 Key 为什么带分页参数？",
+    prompt: "FeedLab 使用 `post:comments:{post_id}:page:{page}:size:{page_size}` 缓存一级评论列表。为什么 Key 里必须带 page 和 page_size？",
+    choices: [
+      { id: "A", text: "因为不同分页请求返回的数据不同，不带分页参数会让不同页面互相污染" },
+      { id: "B", text: "因为 Redis Key 必须至少包含四个冒号" },
+      { id: "C", text: "因为 MySQL 只能查询第一页" },
+      { id: "D", text: "因为 JWT 中间件要求 Key 带 page" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "评论列表是分页接口，page=1/page_size=10 和 page=2/page_size=10 返回的是不同数据。如果 Redis Key 不带分页参数，第二页可能读到第一页缓存，接口就错了。",
+    explanation: "设计列表缓存 Key 时，要把影响响应内容的查询条件都放进 Key，包括分页、排序、过滤条件等。",
+    whyOthersWrong: {
+      B: "Redis 对 Key 的冒号数量没有要求，冒号只是人为约定的命名层级。",
+      C: "MySQL 可以用 limit/offset 查询任意页。",
+      D: "评论列表是公开接口，和 JWT 无关。"
+    },
+    keyPoints: ["分页参数", "响应内容", "缓存隔离", "Key 设计"],
+    interviewTips: ["可以主动扩展：如果后续支持排序方式，也要把 sort 放进 Key。"],
+    codeRefs: ["backend/internal/cache/comment_cache.go", "backend/internal/service/comment_service.go"]
+  },
+  {
+    id: "v3-comment-cache-ttl-1",
+    moduleId: "module-v3-comment-cache",
+    type: "short",
+    title: "评论列表缓存的 TTL 和失效",
+    prompt: "请解释 `post:comments:{post_id}:page:{page}:size:{page_size}` 和 `comment:replies:{comment_id}:page:{page}:size:{page_size}` 的用途、默认 TTL，以及哪些写操作会删除它们。",
+    referenceAnswer: "这两个 Key 分别缓存帖子一级评论分页列表和某条一级评论的二级回复分页列表，缓存内容是 CommentList VO，默认 TTL 是 120 秒，可通过 redis.comment_list_ttl_seconds 配置。创建评论、删除评论、评论点赞和取消点赞都会改变列表内容或 like_count，所以成功后要删除相关评论列表或回复列表缓存。",
+    explanation: "列表缓存的难点不在读取，而在失效。只要写操作会影响列表里展示的字段，就应该删除对应缓存。",
+    keyPoints: ["CommentList VO", "默认 120 秒", "创建评论", "删除评论", "点赞数变化", "写后失效"],
+    interviewTips: ["回答时记得说：缓存失败不影响主流程，MySQL 仍是最终数据源。"],
+    codeRefs: ["backend/internal/cache/comment_cache.go", "backend/config.yaml", "backend/internal/service/comment_service.go", "backend/internal/service/comment_like_service.go"]
+  },
+  {
+    id: "v3-comment-cache-invalidate-1",
+    moduleId: "module-v3-comment-cache",
+    type: "multiple",
+    title: "哪些操作需要删除评论列表缓存？",
+    prompt: "下面哪些操作成功后需要删除一级评论列表或回复列表缓存？",
+    choices: [
+      { id: "A", text: "发布一级评论" },
+      { id: "B", text: "发布二级回复" },
+      { id: "C", text: "删除评论或回复" },
+      { id: "D", text: "点赞或取消点赞某条评论" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "发布一级评论会影响帖子一级评论列表；发布二级回复会影响对应一级评论的回复列表；删除评论或回复会影响可见内容；点赞或取消点赞会影响列表里的 like_count。因此这些操作都需要删除相关列表缓存。",
+    explanation: "缓存失效要从响应字段反推：items 和 like_count 都在 CommentList 响应里，所以内容变化和点赞数变化都要失效。",
+    keyPoints: ["一级评论列表", "回复列表", "可见内容", "like_count", "相关 Key"],
+    interviewTips: ["可以补一句：当前用 SCAN 按前缀删同一资源的分页 Key，是 V3 的简化方案。"],
+    codeRefs: ["backend/internal/service/comment_service.go", "backend/internal/service/comment_like_service.go", "backend/internal/cache/comment_cache.go"]
+  },
+  {
+    id: "v3-comment-cache-code-1",
+    moduleId: "module-v3-comment-cache",
+    type: "code",
+    title: "评论列表缓存的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/posts/:id/comments?page=1&page_size=10 请求如何使用 Redis 缓存。",
+    referenceAnswer: "请求进入 CommentController.ListPostComments，Controller 解析帖子 ID 和分页参数后调用 CommentService.ListPostComments。Service 先校验帖子存在且 published，然后计算默认分页参数。接着调用 CommentCache.GetPostComments 读取 `post:comments:{post_id}:page:{page}:size:{page_size}`，命中则直接返回 CommentList。未命中时调用 CommentRepository.ListPostComments 查询 MySQL，并用 vo.NewComments 组装 CommentList，最后调用 CommentCache.SetPostComments 写入 Redis，TTL 默认 120 秒。",
+    explanation: "这道题训练你说明缓存和三层架构的关系：Controller 不碰 Redis，Repository 不碰 Redis，Service 负责缓存和数据库之间的编排。",
+    keyPoints: ["CommentController", "CommentService", "CommentCache", "CommentRepository", "CommentList VO", "TTL"],
+    interviewTips: ["可以强调：列表缓存 Key 要包含分页参数，防止不同页互相覆盖。"],
+    codeRefs: ["backend/internal/controller/comment_controller.go", "backend/internal/service/comment_service.go", "backend/internal/cache/comment_cache.go", "backend/internal/repository/comment_repository.go"]
   }
 ];

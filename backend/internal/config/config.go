@@ -43,6 +43,7 @@ type RedisConfig struct {
 	UserProfileTTLSeconds  int    `yaml:"user_profile_ttl_seconds"`
 	PostViewTTLSeconds     int    `yaml:"post_view_ttl_seconds"`
 	PostViewFlushThreshold int    `yaml:"post_view_flush_threshold"`
+	CommentListTTLSeconds  int    `yaml:"comment_list_ttl_seconds"`
 }
 
 type JWTConfig struct {
@@ -112,6 +113,9 @@ func (c *Config) withDefaults() {
 	}
 	if c.Redis.PostViewFlushThreshold == 0 {
 		c.Redis.PostViewFlushThreshold = 100
+	}
+	if c.Redis.CommentListTTLSeconds == 0 {
+		c.Redis.CommentListTTLSeconds = 120
 	}
 }
 

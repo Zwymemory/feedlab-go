@@ -15,14 +15,15 @@ import (
 )
 
 type CommentService struct {
-	comments  *repository.CommentRepository
-	posts     *repository.PostRepository
-	postCache *cache.PostCache
-	hotPosts  *cache.HotPostCache
+	comments     *repository.CommentRepository
+	posts        *repository.PostRepository
+	postCache    *cache.PostCache
+	commentCache *cache.CommentCache
+	hotPosts     *cache.HotPostCache
 }
 
-func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache) *CommentService {
-	return &CommentService{comments: comments, posts: posts, postCache: postCache, hotPosts: hotPosts}
+func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache, commentCache *cache.CommentCache, hotPosts *cache.HotPostCache) *CommentService {
+	return &CommentService{comments: comments, posts: posts, postCache: postCache, commentCache: commentCache, hotPosts: hotPosts}
 }
 
 func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint64, req dto.CreateCommentRequest) (*vo.Comment, error) {
@@ -71,6 +72,7 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 		return nil, err
 	}
 	_ = s.postCache.Delete(ctx, postID)
+	s.deleteCommentListCache(ctx, postID, comment.ParentID)
 	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
 
 	created, err := s.comments.FindByID(ctx, comment.ID)
@@ -90,16 +92,22 @@ func (s *CommentService) ListPostComments(ctx context.Context, postID uint64, qu
 	}
 
 	page, pageSize := commentPagination(query)
+	if cached, ok, err := s.commentCache.GetPostComments(ctx, postID, page, pageSize); err == nil && ok {
+		return cached, nil
+	}
+
 	comments, total, err := s.comments.ListPostComments(ctx, postID, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
-	return &vo.CommentList{
+	result := vo.CommentList{
 		Items:    vo.NewComments(comments),
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
-	}, nil
+	}
+	_ = s.commentCache.SetPostComments(ctx, postID, result)
+	return &result, nil
 }
 
 func (s *CommentService) ListReplies(ctx context.Context, parentID uint64, query dto.ListCommentsQuery) (*vo.CommentList, error) {
@@ -121,16 +129,22 @@ func (s *CommentService) ListReplies(ctx context.Context, parentID uint64, query
 	}
 
 	page, pageSize := commentPagination(query)
+	if cached, ok, err := s.commentCache.GetReplies(ctx, parentID, page, pageSize); err == nil && ok {
+		return cached, nil
+	}
+
 	comments, total, err := s.comments.ListReplies(ctx, parentID, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
-	return &vo.CommentList{
+	result := vo.CommentList{
 		Items:    vo.NewComments(comments),
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
-	}, nil
+	}
+	_ = s.commentCache.SetReplies(ctx, parentID, result)
+	return &result, nil
 }
 
 func (s *CommentService) Delete(ctx context.Context, commentID uint64, currentUserID uint64, currentRole string) (*vo.DeleteCommentResult, error) {
@@ -163,8 +177,20 @@ func (s *CommentService) Delete(ctx context.Context, commentID uint64, currentUs
 		return nil, err
 	}
 	_ = s.postCache.Delete(ctx, comment.PostID)
+	s.deleteCommentListCache(ctx, comment.PostID, comment.ParentID)
+	if comment.ParentID == 0 {
+		_ = s.commentCache.DeleteReplies(ctx, comment.ID)
+	}
 	refreshHotPostScore(ctx, s.posts, s.hotPosts, comment.PostID)
 	return &vo.DeleteCommentResult{Deleted: true, DeletedCount: deletedCount}, nil
+}
+
+func (s *CommentService) deleteCommentListCache(ctx context.Context, postID uint64, parentID uint64) {
+	if parentID == 0 {
+		_ = s.commentCache.DeletePostComments(ctx, postID)
+		return
+	}
+	_ = s.commentCache.DeleteReplies(ctx, parentID)
 }
 
 func commentPagination(query dto.ListCommentsQuery) (int, int) {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"feedlab/backend/internal/cache"
+	"feedlab/backend/internal/model"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
 
@@ -11,20 +13,22 @@ import (
 )
 
 type CommentLikeService struct {
-	likes    *repository.CommentLikeRepository
-	comments *repository.CommentRepository
+	likes        *repository.CommentLikeRepository
+	comments     *repository.CommentRepository
+	commentCache *cache.CommentCache
 }
 
-func NewCommentLikeService(likes *repository.CommentLikeRepository, comments *repository.CommentRepository) *CommentLikeService {
-	return &CommentLikeService{likes: likes, comments: comments}
+func NewCommentLikeService(likes *repository.CommentLikeRepository, comments *repository.CommentRepository, commentCache *cache.CommentCache) *CommentLikeService {
+	return &CommentLikeService{likes: likes, comments: comments, commentCache: commentCache}
 }
 
 func (s *CommentLikeService) LikeComment(ctx context.Context, commentID uint64, userID uint64) (*vo.CommentLikeStatus, error) {
-	if err := s.ensurePublishedComment(ctx, commentID); err != nil {
+	comment, err := s.ensurePublishedComment(ctx, commentID)
+	if err != nil {
 		return nil, err
 	}
 
-	err := s.likes.Transaction(ctx, func(tx *gorm.DB) error {
+	err = s.likes.Transaction(ctx, func(tx *gorm.DB) error {
 		txLikes := s.likes.WithTx(tx)
 		txComments := s.comments.WithTx(tx)
 
@@ -43,6 +47,7 @@ func (s *CommentLikeService) LikeComment(ctx context.Context, commentID uint64, 
 		}
 		return nil, err
 	}
+	s.deleteCommentListCache(ctx, comment)
 
 	likeCount, err := s.comments.GetPublishedLikeCount(ctx, commentID)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -55,11 +60,12 @@ func (s *CommentLikeService) LikeComment(ctx context.Context, commentID uint64, 
 }
 
 func (s *CommentLikeService) UnlikeComment(ctx context.Context, commentID uint64, userID uint64) (*vo.CommentLikeStatus, error) {
-	if err := s.ensurePublishedComment(ctx, commentID); err != nil {
+	comment, err := s.ensurePublishedComment(ctx, commentID)
+	if err != nil {
 		return nil, err
 	}
 
-	err := s.likes.Transaction(ctx, func(tx *gorm.DB) error {
+	err = s.likes.Transaction(ctx, func(tx *gorm.DB) error {
 		txLikes := s.likes.WithTx(tx)
 		txComments := s.comments.WithTx(tx)
 
@@ -78,6 +84,7 @@ func (s *CommentLikeService) UnlikeComment(ctx context.Context, commentID uint64
 		}
 		return nil, err
 	}
+	s.deleteCommentListCache(ctx, comment)
 
 	likeCount, err := s.comments.GetPublishedLikeCount(ctx, commentID)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -90,7 +97,7 @@ func (s *CommentLikeService) UnlikeComment(ctx context.Context, commentID uint64
 }
 
 func (s *CommentLikeService) IsCommentLiked(ctx context.Context, commentID uint64, userID uint64) (*vo.CommentLikeStatus, error) {
-	if err := s.ensurePublishedComment(ctx, commentID); err != nil {
+	if _, err := s.ensurePublishedComment(ctx, commentID); err != nil {
 		return nil, err
 	}
 
@@ -108,16 +115,24 @@ func (s *CommentLikeService) IsCommentLiked(ctx context.Context, commentID uint6
 	return &vo.CommentLikeStatus{CommentID: commentID, Liked: liked, LikeCount: likeCount}, nil
 }
 
-func (s *CommentLikeService) ensurePublishedComment(ctx context.Context, commentID uint64) error {
+func (s *CommentLikeService) ensurePublishedComment(ctx context.Context, commentID uint64) (*model.Comment, error) {
 	comment, err := s.comments.FindByID(ctx, commentID)
 	if errors.Is(err, repository.ErrNotFound) {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if comment.Status != "published" {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
-	return nil
+	return comment, nil
+}
+
+func (s *CommentLikeService) deleteCommentListCache(ctx context.Context, comment *model.Comment) {
+	if comment.ParentID == 0 {
+		_ = s.commentCache.DeletePostComments(ctx, comment.PostID)
+		return
+	}
+	_ = s.commentCache.DeleteReplies(ctx, comment.ParentID)
 }

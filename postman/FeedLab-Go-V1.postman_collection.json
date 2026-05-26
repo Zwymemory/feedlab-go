@@ -2236,6 +2236,137 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 18 - V3 Redis Comment List Cache",
+      "item": [
+        {
+          "name": "GET /api/v1/posts/:id/comments - cache root comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "V3 评论列表缓存：第一次查询一级评论会写入 post:comments:{post_id}:page:1:size:10。可运行 redis-cli TTL post:comments:${POST_ID}:page:1:size:10 和 redis-cli GET ... 验证。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/comments/:id/replies - cache replies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{comment_id}}/replies?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{comment_id}}",
+                "replies"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "V3 回复列表缓存：第一次查询回复会写入 comment:replies:{comment_id}:page:1:size:10。可运行 redis-cli TTL comment:replies:${COMMENT_ID}:page:1:size:10 验证。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - invalidate root comments cache",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"V3 comment cache invalidation test\",\n  \"parent_id\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "发布一级评论后会删除 post:comments:{post_id}:page:* 相关缓存。执行前后可用 redis-cli EXISTS post:comments:${POST_ID}:page:1:size:10 验证。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/comments/:id/like - invalidate visible comment cache",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/comments/{{comment_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                "{{comment_id}}",
+                "like"
+              ]
+            },
+            "description": "评论点赞会改变列表里的 like_count，因此会删除该评论所在的一级评论列表或回复列表缓存。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

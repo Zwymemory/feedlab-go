@@ -222,13 +222,13 @@ func paths() gin.H {
 				"content":   "这是一条评论。",
 				"parent_id": 0,
 			}, bearerSecurity(), responseMap("201", "created", "400", "invalid request", "401", "invalid token", "404", "not found")),
-			"get": operationWithIDAndParameters("comments", "List post comments", "List root comments for a published post.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+			"get": operationWithIDAndParameters("comments", "List post comments", "List root comments for a published post with Redis list cache.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
 				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
 				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
 			}),
 		},
 		"/api/v1/comments/{id}/replies": gin.H{
-			"get": operationWithIDAndParameters("comments", "List comment replies", "List second-level replies for a root comment.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
+			"get": operationWithIDAndParameters("comments", "List comment replies", "List second-level replies for a root comment with Redis list cache.", nil, responseMap("200", "success", "400", "invalid query", "404", "not found"), []gin.H{
 				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
 				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
 			}),

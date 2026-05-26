@@ -57,6 +57,18 @@ export type PostList = {
   total: number;
 };
 
+export type LikeStatus = {
+  post_id: number;
+  liked: boolean;
+  like_count: number;
+};
+
+export type CollectStatus = {
+  post_id: number;
+  collected: boolean;
+  collect_count: number;
+};
+
 export type CreatePostPayload = {
   title: string;
   content: string;

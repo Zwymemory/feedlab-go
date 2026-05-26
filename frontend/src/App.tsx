@@ -1,9 +1,19 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError, tokenStore } from "./api/client";
-import type { CreatePostPayload, HealthStatus, LoginPayload, Post, RegisterPayload, User } from "./types";
+import type {
+  CollectStatus,
+  CreatePostPayload,
+  HealthStatus,
+  LikeStatus,
+  LoginPayload,
+  Post,
+  RegisterPayload,
+  User
+} from "./types";
 
 type AuthMode = "login" | "register";
 type Notice = { type: "success" | "error" | "info"; text: string } | null;
+type InteractionTarget = "like" | "collect";
 
 const defaultRegisterForm: RegisterPayload = {
   username: "",
@@ -40,6 +50,11 @@ function App() {
   const [postsLoading, setPostsLoading] = useState(false);
   const [postForm, setPostForm] = useState<CreatePostPayload>(defaultPostForm);
   const [creatingPost, setCreatingPost] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [likeStatus, setLikeStatus] = useState<LikeStatus | null>(null);
+  const [collectStatus, setCollectStatus] = useState<CollectStatus | null>(null);
+  const [interactionLoading, setInteractionLoading] = useState<InteractionTarget | null>(null);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -56,10 +71,24 @@ function App() {
   useEffect(() => {
     if (!token) {
       setCurrentUser(null);
+      setLikeStatus(null);
+      setCollectStatus(null);
       return;
     }
     void loadMe(token);
   }, [token]);
+
+  useEffect(() => {
+    if (!selectedPost) {
+      return;
+    }
+    if (!token) {
+      setLikeStatus(null);
+      setCollectStatus(null);
+      return;
+    }
+    void loadPostInteractions(selectedPost.id, token);
+  }, [selectedPost?.id, token]);
 
   async function checkHealth() {
     setCheckingHealth(true);
@@ -96,6 +125,61 @@ function App() {
     } finally {
       setPostsLoading(false);
     }
+  }
+
+  async function loadPostInteractions(postID: number, nextToken: string) {
+    try {
+      const [liked, collected] = await Promise.all([
+        api.postLiked(postID, nextToken),
+        api.postCollected(postID, nextToken)
+      ]);
+      setLikeStatus(liked);
+      setCollectStatus(collected);
+    } catch (error) {
+      setLikeStatus(null);
+      setCollectStatus(null);
+      setNotice({ type: "error", text: formatError(error, "互动状态加载失败，请重新登录后再试。") });
+    }
+  }
+
+  async function openPost(postID: number) {
+    setDetailLoading(true);
+    setNotice(null);
+    try {
+      const detail = await api.postDetail(postID);
+      setSelectedPost(detail);
+      syncPostCounts(postID, {
+        like_count: detail.like_count,
+        collect_count: detail.collect_count,
+        comment_count: detail.comment_count
+      });
+      if (token) {
+        await loadPostInteractions(postID, token);
+      } else {
+        setLikeStatus(null);
+        setCollectStatus(null);
+      }
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "帖子详情加载失败。") });
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function closePost() {
+    setSelectedPost(null);
+    setLikeStatus(null);
+    setCollectStatus(null);
+  }
+
+  function syncPostCounts(
+    postID: number,
+    counts: Partial<Pick<Post, "like_count" | "collect_count" | "comment_count">>
+  ) {
+    setPosts((currentPosts) =>
+      currentPosts.map((post) => (post.id === postID ? { ...post, ...counts } : post))
+    );
+    setSelectedPost((currentPost) => (currentPost?.id === postID ? { ...currentPost, ...counts } : currentPost));
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -160,6 +244,56 @@ function App() {
       setNotice({ type: "error", text: formatError(error, "发布帖子失败。") });
     } finally {
       setCreatingPost(false);
+    }
+  }
+
+  async function toggleLike() {
+    if (!selectedPost) {
+      return;
+    }
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再点赞帖子。" });
+      return;
+    }
+
+    setInteractionLoading("like");
+    setNotice(null);
+    try {
+      const result = likeStatus?.liked
+        ? await api.unlikePost(selectedPost.id, token)
+        : await api.likePost(selectedPost.id, token);
+      setLikeStatus(result);
+      syncPostCounts(result.post_id, { like_count: result.like_count });
+      setNotice({ type: "success", text: result.liked ? "点赞成功。" : "已取消点赞。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "点赞操作失败。") });
+    } finally {
+      setInteractionLoading(null);
+    }
+  }
+
+  async function toggleCollect() {
+    if (!selectedPost) {
+      return;
+    }
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再收藏帖子。" });
+      return;
+    }
+
+    setInteractionLoading("collect");
+    setNotice(null);
+    try {
+      const result = collectStatus?.collected
+        ? await api.uncollectPost(selectedPost.id, token)
+        : await api.collectPost(selectedPost.id, token);
+      setCollectStatus(result);
+      syncPostCounts(result.post_id, { collect_count: result.collect_count });
+      setNotice({ type: "success", text: result.collected ? "收藏成功。" : "已取消收藏。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "收藏操作失败。") });
+    } finally {
+      setInteractionLoading(null);
     }
   }
 
@@ -397,11 +531,30 @@ function App() {
             ) : posts.length > 0 ? (
               <div className="post-list">
                 {posts.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    selected={selectedPost?.id === post.id}
+                    onOpen={() => void openPost(post.id)}
+                  />
                 ))}
               </div>
             ) : (
               <p className="empty-text">还没有公开帖子。登录后发布第一篇吧。</p>
+            )}
+
+            {(detailLoading || selectedPost) && (
+              <PostDetailPanel
+                post={selectedPost}
+                loading={detailLoading}
+                loggedIn={Boolean(token)}
+                likeStatus={likeStatus}
+                collectStatus={collectStatus}
+                interactionLoading={interactionLoading}
+                onClose={closePost}
+                onToggleLike={() => void toggleLike()}
+                onToggleCollect={() => void toggleCollect()}
+              />
             )}
           </section>
         </section>
@@ -421,9 +574,9 @@ function HealthItem({ label, value }: { label: string; value?: string }) {
   );
 }
 
-function PostCard({ post }: { post: Post }) {
+function PostCard({ post, selected, onOpen }: { post: Post; selected: boolean; onOpen: () => void }) {
   return (
-    <article className="post-card">
+    <article className={`post-card ${selected ? "selected" : ""}`}>
       <div className="post-card-header">
         <div>
           <span className="post-author">@{post.author.username}</span>
@@ -438,12 +591,115 @@ function PostCard({ post }: { post: Post }) {
         <span>{post.collect_count} 收藏</span>
         <span>{post.comment_count} 评论</span>
       </div>
+      <div className="post-card-actions">
+        <button className="text-button" type="button" onClick={onOpen}>
+          查看详情
+        </button>
+      </div>
     </article>
+  );
+}
+
+function PostDetailPanel({
+  post,
+  loading,
+  loggedIn,
+  likeStatus,
+  collectStatus,
+  interactionLoading,
+  onClose,
+  onToggleLike,
+  onToggleCollect
+}: {
+  post: Post | null;
+  loading: boolean;
+  loggedIn: boolean;
+  likeStatus: LikeStatus | null;
+  collectStatus: CollectStatus | null;
+  interactionLoading: InteractionTarget | null;
+  onClose: () => void;
+  onToggleLike: () => void;
+  onToggleCollect: () => void;
+}) {
+  if (loading && !post) {
+    return (
+      <section className="detail-panel">
+        <p className="empty-text">正在打开帖子详情...</p>
+      </section>
+    );
+  }
+
+  if (!post) {
+    return null;
+  }
+
+  const liked = likeStatus?.liked ?? false;
+  const collected = collectStatus?.collected ?? false;
+  const likeCount = likeStatus?.like_count ?? post.like_count;
+  const collectCount = collectStatus?.collect_count ?? post.collect_count;
+
+  return (
+    <section className="detail-panel" aria-live="polite">
+      <div className="detail-header">
+        <div>
+          <p className="eyebrow">Module 3</p>
+          <h2>{post.title}</h2>
+        </div>
+        <button className="icon-button" type="button" onClick={onClose} title="关闭帖子详情">
+          ×
+        </button>
+      </div>
+
+      <div className="detail-author">
+        <div className="avatar small">{initialsFromName(post.author.nickname || post.author.username)}</div>
+        <div>
+          <strong>{post.author.nickname || post.author.username}</strong>
+          <span>@{post.author.username}</span>
+        </div>
+        <time>{formatDate(post.created_at)}</time>
+      </div>
+
+      <p className="detail-content">{post.content}</p>
+
+      <div className="detail-stats">
+        <span>{post.view_count} 浏览</span>
+        <span>{likeCount} 赞</span>
+        <span>{collectCount} 收藏</span>
+        <span>{post.comment_count} 评论</span>
+      </div>
+
+      <div className="detail-actions">
+        <button
+          className={liked ? "primary-button compact" : "secondary-button"}
+          type="button"
+          onClick={onToggleLike}
+          disabled={!loggedIn || interactionLoading === "like"}
+          aria-pressed={liked}
+        >
+          {interactionLoading === "like" ? "处理中..." : liked ? "取消点赞" : "点赞"}
+        </button>
+        <button
+          className={collected ? "primary-button compact" : "secondary-button"}
+          type="button"
+          onClick={onToggleCollect}
+          disabled={!loggedIn || interactionLoading === "collect"}
+          aria-pressed={collected}
+        >
+          {interactionLoading === "collect" ? "处理中..." : collected ? "取消收藏" : "收藏"}
+        </button>
+      </div>
+
+      {!loggedIn && <p className="detail-hint">登录后可以点赞和收藏这篇帖子。</p>}
+    </section>
   );
 }
 
 function initials(user: User) {
   const source = user.nickname || user.username;
+  return source.slice(0, 2).toUpperCase();
+}
+
+function initialsFromName(source: string) {
   return source.slice(0, 2).toUpperCase();
 }
 

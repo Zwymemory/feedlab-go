@@ -1,7 +1,9 @@
 import type {
   ApiResponse,
+  CollectStatus,
   CreatePostPayload,
   HealthStatus,
+  LikeStatus,
   LoginPayload,
   LoginResult,
   Post,
@@ -110,5 +112,38 @@ export const api = {
       body: payload,
       token
     });
+  },
+  postDetail(postID: number) {
+    return request<Post>(`/api/v1/posts/${postID}`);
+  },
+  likePost(postID: number, token: string) {
+    return request<LikeStatus>(`/api/v1/posts/${postID}/like`, {
+      method: "POST",
+      token
+    });
+  },
+  unlikePost(postID: number, token: string) {
+    return request<LikeStatus>(`/api/v1/posts/${postID}/like`, {
+      method: "DELETE",
+      token
+    });
+  },
+  postLiked(postID: number, token: string) {
+    return request<LikeStatus>(`/api/v1/posts/${postID}/liked`, { token });
+  },
+  collectPost(postID: number, token: string) {
+    return request<CollectStatus>(`/api/v1/posts/${postID}/collect`, {
+      method: "POST",
+      token
+    });
+  },
+  uncollectPost(postID: number, token: string) {
+    return request<CollectStatus>(`/api/v1/posts/${postID}/collect`, {
+      method: "DELETE",
+      token
+    });
+  },
+  postCollected(postID: number, token: string) {
+    return request<CollectStatus>(`/api/v1/posts/${postID}/collected`, { token });
   }
 };

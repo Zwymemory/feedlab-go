@@ -21,6 +21,7 @@ type AuthMode = "login" | "register";
 type Notice = { type: "success" | "error" | "info"; text: string } | null;
 type InteractionTarget = "like" | "collect";
 type FollowListMode = "followers" | "following";
+type ProfilePostMode = "posts" | "likes" | "collects";
 
 const defaultRegisterForm: RegisterPayload = {
   username: "",
@@ -80,6 +81,7 @@ function App() {
   const [profileUser, setProfileUser] = useState<PublicUser | null>(null);
   const [profilePosts, setProfilePosts] = useState<Post[]>([]);
   const [profilePostTotal, setProfilePostTotal] = useState(0);
+  const [profilePostMode, setProfilePostMode] = useState<ProfilePostMode>("posts");
   const [profileLoading, setProfileLoading] = useState(false);
   const [followStatus, setFollowStatus] = useState<FollowStatus | null>(null);
   const [followLoading, setFollowLoading] = useState(false);
@@ -365,6 +367,7 @@ function App() {
       setProfileUser(profile);
       setProfilePosts(postsResult.items);
       setProfilePostTotal(postsResult.total);
+      setProfilePostMode("posts");
       setProfileUserIDInput(String(profile.id));
       setFollowListMode("followers");
       await loadFollowUsers(profile.id, "followers");
@@ -386,10 +389,36 @@ function App() {
     setProfileUser(null);
     setProfilePosts([]);
     setProfilePostTotal(0);
+    setProfilePostMode("posts");
     setFollowStatus(null);
     setFollowUsers([]);
     setFollowUsersTotal(0);
     setFollowListMode("followers");
+  }
+
+  async function loadProfilePostList(userID: number, mode: ProfilePostMode) {
+    setProfileLoading(true);
+    try {
+      const result =
+        mode === "posts"
+          ? await api.listUserPosts(userID, 1, 10)
+          : mode === "likes"
+            ? await api.listUserLikedPosts(userID, 1, 10)
+            : await api.listUserCollectedPosts(userID, 1, 10);
+      setProfilePosts(result.items);
+      setProfilePostTotal(result.total);
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "用户帖子列表加载失败。") });
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  function handleProfilePostModeChange(mode: ProfilePostMode) {
+    setProfilePostMode(mode);
+    if (profileUser) {
+      void loadProfilePostList(profileUser.id, mode);
+    }
   }
 
   async function loadFollowUsers(userID: number, mode: FollowListMode) {
@@ -1005,6 +1034,7 @@ function App() {
               user={profileUser}
               posts={profilePosts}
               total={profilePostTotal}
+              postMode={profilePostMode}
               loading={profileLoading}
               userIDInput={profileUserIDInput}
               currentUser={currentUser}
@@ -1018,6 +1048,7 @@ function App() {
               onSearch={handleProfileSearch}
               onClose={closeUserProfile}
               onOpenPost={(postID) => void openPost(postID)}
+              onPostModeChange={handleProfilePostModeChange}
               onToggleFollow={() => void toggleFollowUser()}
               onFollowListModeChange={setFollowListMode}
               onOpenUser={(userID) => void openUserProfile(userID)}
@@ -1127,6 +1158,7 @@ function UserProfilePanel({
   user,
   posts,
   total,
+  postMode,
   loading,
   userIDInput,
   currentUser,
@@ -1140,6 +1172,7 @@ function UserProfilePanel({
   onSearch,
   onClose,
   onOpenPost,
+  onPostModeChange,
   onToggleFollow,
   onFollowListModeChange,
   onOpenUser
@@ -1147,6 +1180,7 @@ function UserProfilePanel({
   user: PublicUser | null;
   posts: Post[];
   total: number;
+  postMode: ProfilePostMode;
   loading: boolean;
   userIDInput: string;
   currentUser: User | null;
@@ -1160,6 +1194,7 @@ function UserProfilePanel({
   onSearch: (event: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
   onOpenPost: (postID: number) => void;
+  onPostModeChange: (mode: ProfilePostMode) => void;
   onToggleFollow: () => void;
   onFollowListModeChange: (mode: FollowListMode) => void;
   onOpenUser: (userID: number) => void;
@@ -1167,6 +1202,13 @@ function UserProfilePanel({
   const isSelf = Boolean(user && currentUser?.id === user.id);
   const canFollow = Boolean(user && currentUser && !isSelf);
   const followerCount = followStatus?.follower_count ?? user?.follower_count ?? 0;
+  const postModeTitle = postMode === "posts" ? "公开帖子" : postMode === "likes" ? "点赞过的帖子" : "收藏过的帖子";
+  const emptyPostText =
+    postMode === "posts"
+      ? "这个用户还没有公开帖子。"
+      : postMode === "likes"
+        ? "这个用户还没有点赞过公开帖子。"
+        : "这个用户还没有收藏过公开帖子。";
 
   return (
     <section className="profile-panel">
@@ -1270,11 +1312,26 @@ function UserProfilePanel({
           </div>
 
           <div className="profile-posts-header">
-            <h4>公开帖子</h4>
-            <span>{total} 篇</span>
+            <div>
+              <h4>{postModeTitle}</h4>
+              <span>{total} 篇</span>
+            </div>
+            <div className="segmented profile-post-tabs">
+              <button className={postMode === "posts" ? "active" : ""} type="button" onClick={() => onPostModeChange("posts")}>
+                发帖
+              </button>
+              <button className={postMode === "likes" ? "active" : ""} type="button" onClick={() => onPostModeChange("likes")}>
+                点赞
+              </button>
+              <button className={postMode === "collects" ? "active" : ""} type="button" onClick={() => onPostModeChange("collects")}>
+                收藏
+              </button>
+            </div>
           </div>
 
-          {posts.length > 0 ? (
+          {loading ? (
+            <p className="empty-text">正在加载{postModeTitle}...</p>
+          ) : posts.length > 0 ? (
             <div className="profile-post-list">
               {posts.map((post) => (
                 <article className="profile-post" key={post.id}>
@@ -1289,7 +1346,7 @@ function UserProfilePanel({
               ))}
             </div>
           ) : (
-            <p className="empty-text">这个用户还没有公开帖子。</p>
+            <p className="empty-text">{emptyPostText}</p>
           )}
         </div>
       ) : (

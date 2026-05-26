@@ -800,6 +800,11 @@ textarea:focus {
   width: 180px;
 }
 
+.profile-post-tabs {
+  grid-template-columns: repeat(3, minmax(56px, 1fr));
+  width: 216px;
+}
+
 .follow-total {
   display: block;
   margin-top: 10px;

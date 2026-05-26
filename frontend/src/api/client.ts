@@ -117,6 +117,20 @@ export const api = {
     });
     return request<PostList>(`/api/v1/users/${userID}/posts?${params.toString()}`);
   },
+  listUserLikedPosts(userID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<PostList>(`/api/v1/users/${userID}/likes?${params.toString()}`);
+  },
+  listUserCollectedPosts(userID: number, page = 1, pageSize = 10) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize)
+    });
+    return request<PostList>(`/api/v1/users/${userID}/collects?${params.toString()}`);
+  },
   followUser(userID: number, token: string) {
     return request<FollowStatus>(`/api/v1/users/${userID}/follow`, {
       method: "POST",

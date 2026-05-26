@@ -2,8 +2,10 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError, tokenStore } from "./api/client";
 import type {
   Comment,
+  CommentLikeStatus,
   CollectStatus,
   CreatePostPayload,
+  DeleteCommentResult,
   HealthStatus,
   LikeStatus,
   LoginPayload,
@@ -67,6 +69,9 @@ function App() {
   const [repliesLoading, setRepliesLoading] = useState<Record<number, boolean>>({});
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
   const [creatingReplyID, setCreatingReplyID] = useState<number | null>(null);
+  const [commentLikeStatuses, setCommentLikeStatuses] = useState<Record<number, CommentLikeStatus>>({});
+  const [commentLikeLoadingID, setCommentLikeLoadingID] = useState<number | null>(null);
+  const [deletingCommentID, setDeletingCommentID] = useState<number | null>(null);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -85,6 +90,7 @@ function App() {
       setCurrentUser(null);
       setLikeStatus(null);
       setCollectStatus(null);
+      setCommentLikeStatuses({});
       return;
     }
     void loadMe(token);
@@ -101,6 +107,17 @@ function App() {
     }
     void loadPostInteractions(selectedPost.id, token);
   }, [selectedPost?.id, token]);
+
+  useEffect(() => {
+    if (!token) {
+      setCommentLikeStatuses({});
+      return;
+    }
+    const ids = visibleCommentIDs(comments, repliesByComment);
+    if (ids.length > 0) {
+      void loadCommentLikeStatuses(ids, token);
+    }
+  }, [token, comments, repliesByComment]);
 
   async function checkHealth() {
     setCheckingHealth(true);
@@ -211,6 +228,9 @@ function App() {
     setRepliesLoading({});
     setReplyDrafts({});
     setCreatingReplyID(null);
+    setCommentLikeStatuses({});
+    setCommentLikeLoadingID(null);
+    setDeletingCommentID(null);
   }
 
   async function loadComments(postID: number) {
@@ -237,6 +257,51 @@ function App() {
     } finally {
       setRepliesLoading((current) => ({ ...current, [commentID]: false }));
     }
+  }
+
+  async function loadCommentLikeStatuses(commentIDs: number[], nextToken: string) {
+    const uniqueIDs = Array.from(new Set(commentIDs)).filter((id) => id > 0);
+    if (uniqueIDs.length === 0) {
+      return;
+    }
+
+    try {
+      const statuses = await Promise.all(uniqueIDs.map((commentID) => api.commentLiked(commentID, nextToken)));
+      setCommentLikeStatuses((current) => {
+        const next = { ...current };
+        for (const status of statuses) {
+          next[status.comment_id] = status;
+        }
+        return next;
+      });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "评论点赞状态加载失败。") });
+    }
+  }
+
+  function updateCommentLikeCount(commentID: number, likeCount: number) {
+    setComments((current) =>
+      current.map((comment) => (comment.id === commentID ? { ...comment, like_count: likeCount } : comment))
+    );
+    setRepliesByComment((current) => {
+      const next: Record<number, Comment[]> = {};
+      for (const [parentID, replies] of Object.entries(current)) {
+        next[Number(parentID)] = replies.map((reply) =>
+          reply.id === commentID ? { ...reply, like_count: likeCount } : reply
+        );
+      }
+      return next;
+    });
+  }
+
+  function adjustPostCommentCount(postID: number, delta: number) {
+    const applyDelta = (count: number) => Math.max(0, count + delta);
+    setPosts((currentPosts) =>
+      currentPosts.map((post) => (post.id === postID ? { ...post, comment_count: applyDelta(post.comment_count) } : post))
+    );
+    setSelectedPost((currentPost) =>
+      currentPost?.id === postID ? { ...currentPost, comment_count: applyDelta(currentPost.comment_count) } : currentPost
+    );
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -377,7 +442,11 @@ function App() {
       setComments((current) => [created, ...current]);
       setCommentTotal((current) => current + 1);
       setCommentDraft("");
-      syncPostCounts(selectedPost.id, { comment_count: selectedPost.comment_count + 1 });
+      setCommentLikeStatuses((current) => ({
+        ...current,
+        [created.id]: { comment_id: created.id, liked: false, like_count: created.like_count }
+      }));
+      adjustPostCommentCount(selectedPost.id, 1);
       setNotice({ type: "success", text: "评论发布成功。" });
     } catch (error) {
       setNotice({ type: "error", text: formatError(error, "评论发布失败。") });
@@ -421,13 +490,106 @@ function App() {
       }));
       setReplyTotals((current) => ({ ...current, [parentID]: (current[parentID] ?? 0) + 1 }));
       setReplyDrafts((current) => ({ ...current, [parentID]: "" }));
-      syncPostCounts(selectedPost.id, { comment_count: selectedPost.comment_count + 1 });
+      setCommentLikeStatuses((current) => ({
+        ...current,
+        [created.id]: { comment_id: created.id, liked: false, like_count: created.like_count }
+      }));
+      adjustPostCommentCount(selectedPost.id, 1);
       setNotice({ type: "success", text: "回复发布成功。" });
     } catch (error) {
       setNotice({ type: "error", text: formatError(error, "回复发布失败。") });
     } finally {
       setCreatingReplyID(null);
     }
+  }
+
+  async function toggleCommentLike(commentID: number) {
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再点赞评论。" });
+      return;
+    }
+
+    setCommentLikeLoadingID(commentID);
+    setNotice(null);
+    try {
+      const currentStatus = commentLikeStatuses[commentID];
+      const result = currentStatus?.liked
+        ? await api.unlikeComment(commentID, token)
+        : await api.likeComment(commentID, token);
+      setCommentLikeStatuses((current) => ({ ...current, [result.comment_id]: result }));
+      updateCommentLikeCount(result.comment_id, result.like_count);
+      setNotice({ type: "success", text: result.liked ? "评论点赞成功。" : "已取消评论点赞。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "评论点赞操作失败。") });
+    } finally {
+      setCommentLikeLoadingID(null);
+    }
+  }
+
+  async function deleteComment(comment: Comment) {
+    if (!selectedPost) {
+      return;
+    }
+    if (!token) {
+      setNotice({ type: "error", text: "请先登录，再删除评论。" });
+      return;
+    }
+
+    setDeletingCommentID(comment.id);
+    setNotice(null);
+    try {
+      const result = await api.deleteComment(comment.id, token);
+      removeDeletedComment(comment, result);
+      adjustPostCommentCount(selectedPost.id, -result.deleted_count);
+      setNotice({ type: "success", text: result.deleted_count > 1 ? "评论及其回复已删除。" : "评论已删除。" });
+    } catch (error) {
+      setNotice({ type: "error", text: formatError(error, "评论删除失败。") });
+    } finally {
+      setDeletingCommentID(null);
+    }
+  }
+
+  function removeDeletedComment(comment: Comment, result: DeleteCommentResult) {
+    setCommentLikeStatuses((current) => {
+      const next = { ...current };
+      delete next[comment.id];
+      if (comment.parent_id === 0) {
+        for (const reply of repliesByComment[comment.id] ?? []) {
+          delete next[reply.id];
+        }
+      }
+      return next;
+    });
+
+    if (comment.parent_id === 0) {
+      setComments((current) => current.filter((item) => item.id !== comment.id));
+      setCommentTotal((current) => Math.max(0, current - 1));
+      setRepliesByComment((current) => {
+        const next = { ...current };
+        delete next[comment.id];
+        return next;
+      });
+      setReplyTotals((current) => {
+        const next = { ...current };
+        delete next[comment.id];
+        return next;
+      });
+      setExpandedReplies((current) => {
+        const next = { ...current };
+        delete next[comment.id];
+        return next;
+      });
+      return;
+    }
+
+    setRepliesByComment((current) => ({
+      ...current,
+      [comment.parent_id]: (current[comment.parent_id] ?? []).filter((reply) => reply.id !== comment.id)
+    }));
+    setReplyTotals((current) => ({
+      ...current,
+      [comment.parent_id]: Math.max(0, (current[comment.parent_id] ?? 0) - result.deleted_count)
+    }));
   }
 
   return (
@@ -689,12 +851,16 @@ function App() {
                 commentsLoading={commentsLoading}
                 commentDraft={commentDraft}
                 creatingComment={creatingComment}
+                currentUser={currentUser}
                 expandedReplies={expandedReplies}
                 repliesByComment={repliesByComment}
                 replyTotals={replyTotals}
                 repliesLoading={repliesLoading}
                 replyDrafts={replyDrafts}
                 creatingReplyID={creatingReplyID}
+                commentLikeStatuses={commentLikeStatuses}
+                commentLikeLoadingID={commentLikeLoadingID}
+                deletingCommentID={deletingCommentID}
                 onClose={closePost}
                 onToggleLike={() => void toggleLike()}
                 onToggleCollect={() => void toggleCollect()}
@@ -710,6 +876,8 @@ function App() {
                   setReplyDrafts((current) => ({ ...current, [commentID]: value }))
                 }
                 onCreateReply={(event, parentID) => void handleCreateReply(event, parentID)}
+                onToggleCommentLike={(commentID) => void toggleCommentLike(commentID)}
+                onDeleteComment={(comment) => void deleteComment(comment)}
               />
             )}
           </section>
@@ -768,12 +936,16 @@ function PostDetailPanel({
   commentsLoading,
   commentDraft,
   creatingComment,
+  currentUser,
   expandedReplies,
   repliesByComment,
   replyTotals,
   repliesLoading,
   replyDrafts,
   creatingReplyID,
+  commentLikeStatuses,
+  commentLikeLoadingID,
+  deletingCommentID,
   onClose,
   onToggleLike,
   onToggleCollect,
@@ -782,7 +954,9 @@ function PostDetailPanel({
   onCreateComment,
   onToggleReplies,
   onReplyDraftChange,
-  onCreateReply
+  onCreateReply,
+  onToggleCommentLike,
+  onDeleteComment
 }: {
   post: Post | null;
   loading: boolean;
@@ -795,12 +969,16 @@ function PostDetailPanel({
   commentsLoading: boolean;
   commentDraft: string;
   creatingComment: boolean;
+  currentUser: User | null;
   expandedReplies: Record<number, boolean>;
   repliesByComment: Record<number, Comment[]>;
   replyTotals: Record<number, number>;
   repliesLoading: Record<number, boolean>;
   replyDrafts: Record<number, string>;
   creatingReplyID: number | null;
+  commentLikeStatuses: Record<number, CommentLikeStatus>;
+  commentLikeLoadingID: number | null;
+  deletingCommentID: number | null;
   onClose: () => void;
   onToggleLike: () => void;
   onToggleCollect: () => void;
@@ -810,6 +988,8 @@ function PostDetailPanel({
   onToggleReplies: (commentID: number) => void;
   onReplyDraftChange: (commentID: number, value: string) => void;
   onCreateReply: (event: FormEvent<HTMLFormElement>, parentID: number) => void;
+  onToggleCommentLike: (commentID: number) => void;
+  onDeleteComment: (comment: Comment) => void;
 }) {
   if (loading && !post) {
     return (
@@ -888,18 +1068,24 @@ function PostDetailPanel({
         loading={commentsLoading}
         draft={commentDraft}
         creating={creatingComment}
+        currentUser={currentUser}
         expandedReplies={expandedReplies}
         repliesByComment={repliesByComment}
         replyTotals={replyTotals}
         repliesLoading={repliesLoading}
         replyDrafts={replyDrafts}
         creatingReplyID={creatingReplyID}
+        commentLikeStatuses={commentLikeStatuses}
+        commentLikeLoadingID={commentLikeLoadingID}
+        deletingCommentID={deletingCommentID}
         onRefresh={onRefreshComments}
         onDraftChange={onCommentDraftChange}
         onSubmit={onCreateComment}
         onToggleReplies={onToggleReplies}
         onReplyDraftChange={onReplyDraftChange}
         onCreateReply={onCreateReply}
+        onToggleCommentLike={onToggleCommentLike}
+        onDeleteComment={onDeleteComment}
       />
     </section>
   );
@@ -912,18 +1098,24 @@ function CommentSection({
   loading,
   draft,
   creating,
+  currentUser,
   expandedReplies,
   repliesByComment,
   replyTotals,
   repliesLoading,
   replyDrafts,
   creatingReplyID,
+  commentLikeStatuses,
+  commentLikeLoadingID,
+  deletingCommentID,
   onRefresh,
   onDraftChange,
   onSubmit,
   onToggleReplies,
   onReplyDraftChange,
-  onCreateReply
+  onCreateReply,
+  onToggleCommentLike,
+  onDeleteComment
 }: {
   loggedIn: boolean;
   comments: Comment[];
@@ -931,18 +1123,24 @@ function CommentSection({
   loading: boolean;
   draft: string;
   creating: boolean;
+  currentUser: User | null;
   expandedReplies: Record<number, boolean>;
   repliesByComment: Record<number, Comment[]>;
   replyTotals: Record<number, number>;
   repliesLoading: Record<number, boolean>;
   replyDrafts: Record<number, string>;
   creatingReplyID: number | null;
+  commentLikeStatuses: Record<number, CommentLikeStatus>;
+  commentLikeLoadingID: number | null;
+  deletingCommentID: number | null;
   onRefresh: () => void;
   onDraftChange: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onToggleReplies: (commentID: number) => void;
   onReplyDraftChange: (commentID: number, value: string) => void;
   onCreateReply: (event: FormEvent<HTMLFormElement>, parentID: number) => void;
+  onToggleCommentLike: (commentID: number) => void;
+  onDeleteComment: (comment: Comment) => void;
 }) {
   return (
     <section className="comments-section">
@@ -980,15 +1178,21 @@ function CommentSection({
               key={comment.id}
               comment={comment}
               loggedIn={loggedIn}
+              currentUser={currentUser}
               expanded={Boolean(expandedReplies[comment.id])}
               replies={repliesByComment[comment.id] ?? []}
               replyTotal={replyTotals[comment.id] ?? 0}
               repliesLoading={Boolean(repliesLoading[comment.id])}
               replyDraft={replyDrafts[comment.id] ?? ""}
               creatingReply={creatingReplyID === comment.id}
+              commentLikeStatuses={commentLikeStatuses}
+              commentLikeLoadingID={commentLikeLoadingID}
+              deletingCommentID={deletingCommentID}
               onToggleReplies={() => onToggleReplies(comment.id)}
               onReplyDraftChange={(value) => onReplyDraftChange(comment.id, value)}
               onCreateReply={(event) => onCreateReply(event, comment.id)}
+              onToggleCommentLike={onToggleCommentLike}
+              onDeleteComment={onDeleteComment}
             />
           ))}
         </div>
@@ -1002,31 +1206,54 @@ function CommentSection({
 function CommentItem({
   comment,
   loggedIn,
+  currentUser,
   expanded,
   replies,
   replyTotal,
   repliesLoading,
   replyDraft,
   creatingReply,
+  commentLikeStatuses,
+  commentLikeLoadingID,
+  deletingCommentID,
   onToggleReplies,
   onReplyDraftChange,
-  onCreateReply
+  onCreateReply,
+  onToggleCommentLike,
+  onDeleteComment
 }: {
   comment: Comment;
   loggedIn: boolean;
+  currentUser: User | null;
   expanded: boolean;
   replies: Comment[];
   replyTotal: number;
   repliesLoading: boolean;
   replyDraft: string;
   creatingReply: boolean;
+  commentLikeStatuses: Record<number, CommentLikeStatus>;
+  commentLikeLoadingID: number | null;
+  deletingCommentID: number | null;
   onToggleReplies: () => void;
   onReplyDraftChange: (value: string) => void;
   onCreateReply: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleCommentLike: (commentID: number) => void;
+  onDeleteComment: (comment: Comment) => void;
 }) {
+  const canDelete = canDeleteComment(currentUser, comment);
+
   return (
     <article className="comment-item">
-      <CommentBody comment={comment} />
+      <CommentBody
+        comment={comment}
+        loggedIn={loggedIn}
+        canDelete={canDelete}
+        likeStatus={commentLikeStatuses[comment.id]}
+        likeLoading={commentLikeLoadingID === comment.id}
+        deleting={deletingCommentID === comment.id}
+        onToggleLike={() => onToggleCommentLike(comment.id)}
+        onDelete={() => onDeleteComment(comment)}
+      />
       <div className="comment-actions">
         <button className="text-button" type="button" onClick={onToggleReplies}>
           {expanded ? "收起回复" : replyTotal > 0 ? `查看 ${replyTotal} 条回复` : "回复 / 查看回复"}
@@ -1056,7 +1283,16 @@ function CommentItem({
             <div className="reply-list">
               {replies.map((reply) => (
                 <article className="comment-item reply" key={reply.id}>
-                  <CommentBody comment={reply} />
+                  <CommentBody
+                    comment={reply}
+                    loggedIn={loggedIn}
+                    canDelete={canDeleteComment(currentUser, reply)}
+                    likeStatus={commentLikeStatuses[reply.id]}
+                    likeLoading={commentLikeLoadingID === reply.id}
+                    deleting={deletingCommentID === reply.id}
+                    onToggleLike={() => onToggleCommentLike(reply.id)}
+                    onDelete={() => onDeleteComment(reply)}
+                  />
                 </article>
               ))}
             </div>
@@ -1069,7 +1305,28 @@ function CommentItem({
   );
 }
 
-function CommentBody({ comment }: { comment: Comment }) {
+function CommentBody({
+  comment,
+  loggedIn,
+  canDelete,
+  likeStatus,
+  likeLoading,
+  deleting,
+  onToggleLike,
+  onDelete
+}: {
+  comment: Comment;
+  loggedIn: boolean;
+  canDelete: boolean;
+  likeStatus?: CommentLikeStatus;
+  likeLoading: boolean;
+  deleting: boolean;
+  onToggleLike: () => void;
+  onDelete: () => void;
+}) {
+  const liked = likeStatus?.liked ?? false;
+  const likeCount = likeStatus?.like_count ?? comment.like_count;
+
   return (
     <>
       <div className="comment-head">
@@ -1084,7 +1341,23 @@ function CommentBody({ comment }: { comment: Comment }) {
       <p className="comment-content">{comment.content}</p>
       <div className="comment-meta">
         <span>#{comment.id}</span>
-        <span>{comment.like_count} 赞</span>
+        <span>{likeCount} 赞</span>
+      </div>
+      <div className="comment-control-row">
+        <button
+          className={liked ? "primary-button mini" : "secondary-button mini"}
+          type="button"
+          onClick={onToggleLike}
+          disabled={!loggedIn || likeLoading || deleting}
+          aria-pressed={liked}
+        >
+          {likeLoading ? "处理中..." : liked ? "取消点赞" : "点赞"}
+        </button>
+        {canDelete && (
+          <button className="danger-button mini" type="button" onClick={onDelete} disabled={deleting || likeLoading}>
+            {deleting ? "删除中..." : "删除"}
+          </button>
+        )}
       </div>
     </>
   );
@@ -1097,6 +1370,23 @@ function initials(user: User) {
 
 function initialsFromName(source: string) {
   return source.slice(0, 2).toUpperCase();
+}
+
+function canDeleteComment(user: User | null, comment: Comment) {
+  return Boolean(user && (user.id === comment.user_id || user.role === "admin"));
+}
+
+function visibleCommentIDs(comments: Comment[], repliesByComment: Record<number, Comment[]>) {
+  const ids = new Set<number>();
+  for (const comment of comments) {
+    ids.add(comment.id);
+  }
+  for (const replies of Object.values(repliesByComment)) {
+    for (const reply of replies) {
+      ids.add(reply.id);
+    }
+  }
+  return Array.from(ids);
 }
 
 function formatDate(value: string) {

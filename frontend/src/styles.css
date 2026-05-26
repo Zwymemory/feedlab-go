@@ -425,6 +425,12 @@ textarea:focus {
   padding: 0 16px;
 }
 
+.primary-button.mini {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
 .secondary-button {
   min-height: 40px;
   padding: 0 16px;
@@ -438,6 +444,26 @@ textarea:focus {
 .secondary-button:hover:not(:disabled) {
   border-color: #2f7dff;
   color: #27548a;
+}
+
+.secondary-button.mini,
+.danger-button.mini {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.danger-button {
+  border: 1px solid #f0c1ba;
+  border-radius: 8px;
+  background: #fff7f5;
+  color: #a23b2f;
+  font-weight: 800;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #fff1ef;
+  border-color: #dd8b80;
 }
 
 .next-steps {
@@ -738,6 +764,13 @@ textarea:focus {
   padding: 5px 8px;
   border-radius: 999px;
   background: #f1f5f9;
+}
+
+.comment-control-row {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .comment-actions {

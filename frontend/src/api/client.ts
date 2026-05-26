@@ -1,10 +1,12 @@
 import type {
   ApiResponse,
   Comment,
+  CommentLikeStatus,
   CommentList,
   CollectStatus,
   CreateCommentPayload,
   CreatePostPayload,
+  DeleteCommentResult,
   HealthStatus,
   LikeStatus,
   LoginPayload,
@@ -169,5 +171,26 @@ export const api = {
       page_size: String(pageSize)
     });
     return request<CommentList>(`/api/v1/comments/${commentID}/replies?${params.toString()}`);
+  },
+  commentLiked(commentID: number, token: string) {
+    return request<CommentLikeStatus>(`/api/v1/comments/${commentID}/liked`, { token });
+  },
+  likeComment(commentID: number, token: string) {
+    return request<CommentLikeStatus>(`/api/v1/comments/${commentID}/like`, {
+      method: "POST",
+      token
+    });
+  },
+  unlikeComment(commentID: number, token: string) {
+    return request<CommentLikeStatus>(`/api/v1/comments/${commentID}/like`, {
+      method: "DELETE",
+      token
+    });
+  },
+  deleteComment(commentID: number, token: string) {
+    return request<DeleteCommentResult>(`/api/v1/comments/${commentID}`, {
+      method: "DELETE",
+      token
+    });
   }
 };

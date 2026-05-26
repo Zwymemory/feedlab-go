@@ -95,6 +95,17 @@ export type CreateCommentPayload = {
   parent_id?: number;
 };
 
+export type CommentLikeStatus = {
+  comment_id: number;
+  liked: boolean;
+  like_count: number;
+};
+
+export type DeleteCommentResult = {
+  deleted: boolean;
+  deleted_count: number;
+};
+
 export type CreatePostPayload = {
   title: string;
   content: string;

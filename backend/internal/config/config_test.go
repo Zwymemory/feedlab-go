@@ -43,4 +43,7 @@ jwt:
 	if cfg.Redis.PostDetailTTLSeconds != 300 {
 		t.Fatalf("expected default post detail ttl seconds, got %d", cfg.Redis.PostDetailTTLSeconds)
 	}
+	if cfg.Redis.UserProfileTTLSeconds != 600 {
+		t.Fatalf("expected default user profile ttl seconds, got %d", cfg.Redis.UserProfileTTLSeconds)
+	}
 }

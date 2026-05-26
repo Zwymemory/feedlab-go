@@ -1818,6 +1818,101 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 14 - V3 Redis User Profile Cache",
+      "item": [
+        {
+          "name": "GET /api/v1/users/:id - warm cache",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "V3 用户公开资料缓存预热：先执行一次公开主页。执行前可在终端运行 redis-cli DEL user:profile:{{user_id}}，请求成功后再运行 redis-cli TTL user:profile:{{user_id}}，预期 TTL > 0。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id - cache hit",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{user_id}}"
+              ]
+            },
+            "description": "V3 用户公开资料缓存命中：紧接上一步再次查询同一用户公开主页，预期响应结构一致，服务端优先读 Redis 的 user:profile:{user_id}。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users/:target/follow - invalidate cache",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "V3 用户公开资料缓存失效：关注会改变当前用户 following_count 和目标用户 follower_count，接口成功后会删除双方 user:profile 缓存。可运行 redis-cli EXISTS user:profile:{{target_user_id}}，预期返回 0。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:target - refill cache",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}"
+              ]
+            },
+            "description": "V3 用户公开资料缓存回填：关注删除旧缓存后，再次查询目标用户公开主页会回源 MySQL 并重新写入 Redis。可运行 redis-cli TTL user:profile:{{target_user_id}} 验证。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

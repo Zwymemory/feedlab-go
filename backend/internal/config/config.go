@@ -36,10 +36,11 @@ type MySQLConfig struct {
 }
 
 type RedisConfig struct {
-	Addr                 string `yaml:"addr"`
-	Password             string `yaml:"password"`
-	DB                   int    `yaml:"db"`
-	PostDetailTTLSeconds int    `yaml:"post_detail_ttl_seconds"`
+	Addr                  string `yaml:"addr"`
+	Password              string `yaml:"password"`
+	DB                    int    `yaml:"db"`
+	PostDetailTTLSeconds  int    `yaml:"post_detail_ttl_seconds"`
+	UserProfileTTLSeconds int    `yaml:"user_profile_ttl_seconds"`
 }
 
 type JWTConfig struct {
@@ -100,6 +101,9 @@ func (c *Config) withDefaults() {
 	}
 	if c.Redis.PostDetailTTLSeconds == 0 {
 		c.Redis.PostDetailTTLSeconds = 300
+	}
+	if c.Redis.UserProfileTTLSeconds == 0 {
+		c.Redis.UserProfileTTLSeconds = 600
 	}
 }
 

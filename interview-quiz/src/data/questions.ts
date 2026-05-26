@@ -84,6 +84,13 @@ export const modules: QuizModule[] = [
     subtitle: "Redis、Cache Aside、TTL、缓存失效",
     accent: "#dc2626",
     summary: "理解为什么帖子详情适合缓存，以及如何在点赞、收藏、评论等写操作后删除旧缓存。"
+  },
+  {
+    id: "module-v3-user-cache",
+    title: "V3 模块 2：用户公开资料缓存",
+    subtitle: "PublicUser、隐私边界、计数失效",
+    accent: "#0f766e",
+    summary: "理解用户公开主页为什么能缓存，以及关注、发帖、删帖如何影响公开资料中的计数字段。"
   }
 ];
 
@@ -1060,5 +1067,72 @@ export const questions: Question[] = [
     keyPoints: ["Controller 解析 ID", "Service 先查缓存", "Repository 回源 MySQL", "VO 写入 Redis", "TTL"],
     interviewTips: ["可以补一句：缓存异常不应该改变接口语义，MySQL 仍是最终数据源。"],
     codeRefs: ["backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/cache/post_cache.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "v3-user-cache-public-1",
+    moduleId: "module-v3-user-cache",
+    type: "single",
+    title: "为什么缓存 PublicUser 而不是 User？",
+    prompt: "FeedLab V3 给 GET /api/v1/users/:id 加 Redis 缓存时，为什么缓存 PublicUser VO，而不是完整 User VO？",
+    choices: [
+      { id: "A", text: "PublicUser 只包含公开主页需要的字段，不会缓存 email、role、status 等内部字段" },
+      { id: "B", text: "Redis 不能存储带 email 的 JSON" },
+      { id: "C", text: "User VO 无法被 json.Marshal 序列化" },
+      { id: "D", text: "缓存完整 User 可以让公开接口返回更多字段" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "公开主页接口只应该返回公开字段，所以缓存也应该保存 PublicUser VO。这样即使缓存被复用，也不会把 email、role、status 等当前用户或内部字段泄露给公开接口。",
+    explanation: "缓存层不能破坏接口边界。公开接口返回什么，缓存就应该缓存什么，而不是缓存更宽的数据库模型或内部 VO。",
+    whyOthersWrong: {
+      B: "Redis 可以存储任意字符串，包括带 email 字段的 JSON。",
+      C: "User VO 也可以序列化，问题不是技术不能，而是边界不应该。",
+      D: "公开接口不应该因为缓存而扩大返回字段。"
+    },
+    keyPoints: ["PublicUser VO", "隐私字段", "接口边界", "缓存不扩大权限"],
+    interviewTips: ["可以说：缓存是性能优化，不应该改变 API 契约。"],
+    codeRefs: ["backend/internal/vo/user.go", "backend/internal/cache/user_cache.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "v3-user-cache-key-1",
+    moduleId: "module-v3-user-cache",
+    type: "short",
+    title: "user:profile:{user_id} 的用途和 TTL",
+    prompt: "请解释 Redis Key `user:profile:{user_id}` 缓存什么、默认过期时间是多少、为什么要设置 TTL。",
+    referenceAnswer: "`user:profile:{user_id}` 缓存用户公开主页资料 PublicUser VO，默认 TTL 是 600 秒，可通过 config.yaml 的 redis.user_profile_ttl_seconds 调整。TTL 可以限制旧资料最长存在时间，避免缓存因为漏删而长期返回旧粉丝数、关注数或发帖数。",
+    explanation: "用户公开资料虽然是公开数据，但其中有计数字段，会随着关注和发帖变化，所以需要 TTL 和写后失效。",
+    keyPoints: ["PublicUser", "默认 600 秒", "可配置", "计数字段", "防止旧数据长期存在"],
+    interviewTips: ["回答 Redis Key 时要包含：key 格式、value 内容、TTL、失效场景。"],
+    codeRefs: ["backend/internal/cache/user_cache.go", "backend/config.yaml", "backend/internal/config/config.go"]
+  },
+  {
+    id: "v3-user-cache-invalidate-1",
+    moduleId: "module-v3-user-cache",
+    type: "multiple",
+    title: "哪些操作会影响用户公开资料缓存？",
+    prompt: "用户公开资料中包含 follower_count、following_count、post_count。下面哪些操作成功后应该删除相关 `user:profile:{user_id}` 缓存？",
+    choices: [
+      { id: "A", text: "当前用户关注目标用户" },
+      { id: "B", text: "当前用户取消关注目标用户" },
+      { id: "C", text: "用户发布 published 帖子" },
+      { id: "D", text: "用户删除 published 帖子" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "关注和取消关注会改变当前用户的 following_count，也会改变目标用户的 follower_count，所以要删除双方缓存。发布和删除 published 帖子会改变作者 post_count，所以要删除作者缓存。",
+    explanation: "缓存失效要从响应字段反推：只要写操作会改变缓存响应里的字段，就需要删除缓存。",
+    keyPoints: ["follower_count", "following_count", "post_count", "双方用户缓存", "作者缓存"],
+    interviewTips: ["可以主动强调：/users/me 不用这个公开缓存，因为它返回的是当前用户私有视图。"],
+    codeRefs: ["backend/internal/service/follow_service.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "v3-user-cache-code-1",
+    moduleId: "module-v3-user-cache",
+    type: "code",
+    title: "用户公开资料缓存的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/users/:id 在 V3 中如何使用 Redis 缓存。",
+    referenceAnswer: "请求进入 router 后匹配到 UserController.PublicProfile。Controller 解析 user id 后调用 UserService.PublicProfile。Service 先通过 UserCache.GetPublicProfile 读取 `user:profile:{id}`，命中则直接返回 PublicUser。未命中时调用 UserRepository.FindByID 查询 MySQL，再用 vo.NewPublicUser 组装公开 VO，最后调用 UserCache.SetPublicProfile 写入 Redis，TTL 默认 600 秒。",
+    explanation: "这道题训练你说明缓存层和分层架构的关系：Controller 不碰缓存，Repository 不碰 Redis，Service 编排缓存和数据库。",
+    keyPoints: ["UserController", "UserService", "UserCache", "UserRepository", "PublicUser VO", "TTL"],
+    interviewTips: ["可以补一句：缓存失败不改变接口语义，因为 MySQL 仍是最终数据源。"],
+    codeRefs: ["backend/internal/controller/user_controller.go", "backend/internal/service/user_service.go", "backend/internal/cache/user_cache.go", "backend/internal/repository/user_repository.go"]
   }
 ];

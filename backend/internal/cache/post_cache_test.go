@@ -9,3 +9,11 @@ func TestPostDetailKey(t *testing.T) {
 		t.Fatalf("unexpected key: got %q want %q", got, want)
 	}
 }
+
+func TestUserProfileKey(t *testing.T) {
+	got := UserProfileKey(7)
+	want := "user:profile:7"
+	if got != want {
+		t.Fatalf("unexpected key: got %q want %q", got, want)
+	}
+}

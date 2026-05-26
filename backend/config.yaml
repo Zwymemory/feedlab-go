@@ -19,6 +19,7 @@ redis:
   password: ""
   db: 0
   post_detail_ttl_seconds: 300
+  user_profile_ttl_seconds: 600
 
 jwt:
   secret: "feedlab_v1_change_me"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
@@ -12,12 +13,13 @@ import (
 )
 
 type FollowService struct {
-	follows *repository.UserFollowRepository
-	users   *repository.UserRepository
+	follows   *repository.UserFollowRepository
+	users     *repository.UserRepository
+	userCache *cache.UserCache
 }
 
-func NewFollowService(follows *repository.UserFollowRepository, users *repository.UserRepository) *FollowService {
-	return &FollowService{follows: follows, users: users}
+func NewFollowService(follows *repository.UserFollowRepository, users *repository.UserRepository, userCache *cache.UserCache) *FollowService {
+	return &FollowService{follows: follows, users: users, userCache: userCache}
 }
 
 func (s *FollowService) Follow(ctx context.Context, currentUserID uint64, targetUserID uint64) (*vo.FollowStatus, error) {
@@ -50,6 +52,7 @@ func (s *FollowService) Follow(ctx context.Context, currentUserID uint64, target
 		}
 		return nil, err
 	}
+	s.deleteChangedUserProfileCaches(ctx, currentUserID, targetUserID)
 	return s.followStatus(ctx, targetUserID, true)
 }
 
@@ -83,6 +86,7 @@ func (s *FollowService) Unfollow(ctx context.Context, currentUserID uint64, targ
 		}
 		return nil, err
 	}
+	s.deleteChangedUserProfileCaches(ctx, currentUserID, targetUserID)
 	return s.followStatus(ctx, targetUserID, false)
 }
 
@@ -168,6 +172,11 @@ func (s *FollowService) followStatus(ctx context.Context, targetUserID uint64, f
 		return nil, err
 	}
 	return &vo.FollowStatus{UserID: targetUserID, Followed: followed, FollowerCount: target.FollowerCount}, nil
+}
+
+func (s *FollowService) deleteChangedUserProfileCaches(ctx context.Context, currentUserID uint64, targetUserID uint64) {
+	_ = s.userCache.DeletePublicProfile(ctx, currentUserID)
+	_ = s.userCache.DeletePublicProfile(ctx, targetUserID)
 }
 
 func followPagination(query dto.ListFollowsQuery) (int, int) {

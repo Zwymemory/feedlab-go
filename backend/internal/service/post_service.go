@@ -18,10 +18,11 @@ type PostService struct {
 	posts     *repository.PostRepository
 	users     *repository.UserRepository
 	postCache *cache.PostCache
+	userCache *cache.UserCache
 }
 
-func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache) *PostService {
-	return &PostService{posts: posts, users: users, postCache: postCache}
+func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, userCache *cache.UserCache) *PostService {
+	return &PostService{posts: posts, users: users, postCache: postCache, userCache: userCache}
 }
 
 func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreatePostRequest) (*vo.Post, error) {
@@ -63,6 +64,9 @@ func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreateP
 	})
 	if err != nil {
 		return nil, err
+	}
+	if post.Status == "published" {
+		_ = s.userCache.DeletePublicProfile(ctx, userID)
 	}
 
 	created, err := s.posts.FindByID(ctx, post.ID)
@@ -171,5 +175,8 @@ func (s *PostService) Delete(ctx context.Context, id uint64, currentUserID uint6
 		return err
 	}
 	_ = s.postCache.Delete(ctx, id)
+	if post.Status == "published" {
+		_ = s.userCache.DeletePublicProfile(ctx, post.UserID)
+	}
 	return nil
 }

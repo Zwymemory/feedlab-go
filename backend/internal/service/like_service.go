@@ -17,10 +17,11 @@ type LikeService struct {
 	posts     *repository.PostRepository
 	users     *repository.UserRepository
 	postCache *cache.PostCache
+	hotPosts  *cache.HotPostCache
 }
 
-func NewLikeService(likes *repository.PostLikeRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache) *LikeService {
-	return &LikeService{likes: likes, posts: posts, users: users, postCache: postCache}
+func NewLikeService(likes *repository.PostLikeRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache) *LikeService {
+	return &LikeService{likes: likes, posts: posts, users: users, postCache: postCache, hotPosts: hotPosts}
 }
 
 func (s *LikeService) LikePost(ctx context.Context, postID uint64, userID uint64) (*vo.LikeStatus, error) {
@@ -48,6 +49,7 @@ func (s *LikeService) LikePost(ctx context.Context, postID uint64, userID uint64
 		return nil, err
 	}
 	_ = s.postCache.Delete(ctx, postID)
+	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
 
 	likeCount, err := s.posts.GetPublishedLikeCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {
@@ -84,6 +86,7 @@ func (s *LikeService) UnlikePost(ctx context.Context, postID uint64, userID uint
 		return nil, err
 	}
 	_ = s.postCache.Delete(ctx, postID)
+	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
 
 	likeCount, err := s.posts.GetPublishedLikeCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {

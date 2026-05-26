@@ -17,3 +17,9 @@ func TestUserProfileKey(t *testing.T) {
 		t.Fatalf("unexpected key: got %q want %q", got, want)
 	}
 }
+
+func TestRankHotPostsKey(t *testing.T) {
+	if RankHotPostsKey != "rank:hot_posts" {
+		t.Fatalf("unexpected hot posts key: %q", RankHotPostsKey)
+	}
+}

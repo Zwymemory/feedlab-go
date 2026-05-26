@@ -1913,6 +1913,127 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 15 - V3 Redis Hot Posts Rank",
+      "item": [
+        {
+          "name": "GET /api/v1/posts/hot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/hot?limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "hot"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "V3 热门帖子排行榜：从 Redis ZSet rank:hot_posts 取 Top N，ZSet 为空时用 MySQL 兜底并回填。可运行 redis-cli ZREVRANGE rank:hot_posts 0 9 WITHSCORES 验证。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/like - refresh hot score",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "点赞会改变 like_count，因此会刷新 rank:hot_posts 中该帖子的 score。执行后可运行 redis-cli ZSCORE rank:hot_posts {{post_id}}。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - refresh hot score",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"V3 热门榜刷新测试评论\",\n  \"parent_id\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "发布评论会改变 comment_count，因此会刷新热门榜分数。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/hot - after interactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/hot?limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "hot"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "互动后再次查询热门榜，预期目标帖子 hot_score 随点赞/评论变化。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

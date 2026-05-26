@@ -191,6 +191,11 @@ func paths() gin.H {
 			"get":    operationWithID("posts", "Post detail", "Return a published post detail.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
 			"delete": operationWithID("posts", "Delete post", "Soft delete a post. Only the author or admin can delete it.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),
 		},
+		"/api/v1/posts/hot": gin.H{
+			"get": operationWithIDAndParameters("posts", "List hot posts", "List hot published posts from Redis ZSet with MySQL fallback.", nil, responseMap("200", "success", "400", "invalid query"), []gin.H{
+				queryParameter("limit", "Max number of hot posts, default 10, max 50.", 10, 1, 50),
+			}),
+		},
 		"/api/v1/posts/{id}/like": gin.H{
 			"post":   operationWithID("likes", "Like post", "Like a published post idempotently and increase like_count only once.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
 			"delete": operationWithID("likes", "Unlike post", "Cancel a post like idempotently and decrease like_count only when a like existed.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),

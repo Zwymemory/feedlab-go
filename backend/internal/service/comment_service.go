@@ -18,10 +18,11 @@ type CommentService struct {
 	comments  *repository.CommentRepository
 	posts     *repository.PostRepository
 	postCache *cache.PostCache
+	hotPosts  *cache.HotPostCache
 }
 
-func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache) *CommentService {
-	return &CommentService{comments: comments, posts: posts, postCache: postCache}
+func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache) *CommentService {
+	return &CommentService{comments: comments, posts: posts, postCache: postCache, hotPosts: hotPosts}
 }
 
 func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint64, req dto.CreateCommentRequest) (*vo.Comment, error) {
@@ -70,6 +71,7 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 		return nil, err
 	}
 	_ = s.postCache.Delete(ctx, postID)
+	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
 
 	created, err := s.comments.FindByID(ctx, comment.ID)
 	if err != nil {
@@ -161,6 +163,7 @@ func (s *CommentService) Delete(ctx context.Context, commentID uint64, currentUs
 		return nil, err
 	}
 	_ = s.postCache.Delete(ctx, comment.PostID)
+	refreshHotPostScore(ctx, s.posts, s.hotPosts, comment.PostID)
 	return &vo.DeleteCommentResult{Deleted: true, DeletedCount: deletedCount}, nil
 }
 

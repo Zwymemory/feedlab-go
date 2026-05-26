@@ -19,10 +19,11 @@ type PostService struct {
 	users     *repository.UserRepository
 	postCache *cache.PostCache
 	userCache *cache.UserCache
+	hotPosts  *cache.HotPostCache
 }
 
-func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, userCache *cache.UserCache) *PostService {
-	return &PostService{posts: posts, users: users, postCache: postCache, userCache: userCache}
+func NewPostService(posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, userCache *cache.UserCache, hotPosts *cache.HotPostCache) *PostService {
+	return &PostService{posts: posts, users: users, postCache: postCache, userCache: userCache, hotPosts: hotPosts}
 }
 
 func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreatePostRequest) (*vo.Post, error) {
@@ -74,6 +75,10 @@ func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreateP
 		return nil, err
 	}
 	result := vo.NewPost(*created)
+	if created.Status == "published" {
+		_ = s.refreshHotPost(ctx, *created)
+		result.HotScore = created.HotScore
+	}
 	return &result, nil
 }
 
@@ -97,6 +102,34 @@ func (s *PostService) List(ctx context.Context, query dto.ListPostsQuery) (*vo.P
 		Page:     page,
 		PageSize: pageSize,
 		Total:    total,
+	}, nil
+}
+
+func (s *PostService) Hot(ctx context.Context, query dto.ListHotPostsQuery) (*vo.PostList, error) {
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	posts, err := s.listHotFromRedis(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(posts) == 0 {
+		posts, err = s.posts.ListHotPublished(ctx, limit)
+		if err != nil {
+			return nil, err
+		}
+		for i := range posts {
+			_ = s.refreshHotPost(ctx, posts[i])
+		}
+	}
+
+	return &vo.PostList{
+		Items:    vo.NewPosts(posts),
+		Page:     1,
+		PageSize: limit,
+		Total:    int64(len(posts)),
 	}, nil
 }
 
@@ -175,8 +208,56 @@ func (s *PostService) Delete(ctx context.Context, id uint64, currentUserID uint6
 		return err
 	}
 	_ = s.postCache.Delete(ctx, id)
+	_ = s.hotPosts.Remove(ctx, id)
 	if post.Status == "published" {
 		_ = s.userCache.DeletePublicProfile(ctx, post.UserID)
 	}
 	return nil
+}
+
+func (s *PostService) RefreshHotScore(ctx context.Context, postID uint64) {
+	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
+}
+
+func (s *PostService) listHotFromRedis(ctx context.Context, limit int) ([]model.Post, error) {
+	ranks, err := s.hotPosts.Top(ctx, limit)
+	if err != nil || len(ranks) == 0 {
+		return nil, err
+	}
+
+	ids := make([]uint64, 0, len(ranks))
+	scoreByID := make(map[uint64]float64, len(ranks))
+	for _, rank := range ranks {
+		ids = append(ids, rank.PostID)
+		scoreByID[rank.PostID] = rank.Score
+	}
+
+	found, err := s.posts.FindPublishedByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	postByID := make(map[uint64]model.Post, len(found))
+	for _, post := range found {
+		post.HotScore = scoreByID[post.ID]
+		postByID[post.ID] = post
+	}
+
+	posts := make([]model.Post, 0, len(ids))
+	for _, id := range ids {
+		if post, ok := postByID[id]; ok {
+			posts = append(posts, post)
+			continue
+		}
+		_ = s.hotPosts.Remove(ctx, id)
+	}
+	return posts, nil
+}
+
+func (s *PostService) refreshHotPost(ctx context.Context, post model.Post) error {
+	score := calculateHotScore(post)
+	if err := s.posts.UpdateHotScore(ctx, post.ID, score); err != nil {
+		return err
+	}
+	post.HotScore = score
+	return s.hotPosts.SetScore(ctx, post.ID, score)
 }

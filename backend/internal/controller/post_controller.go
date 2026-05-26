@@ -80,6 +80,31 @@ func (p *PostController) List(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// Hot godoc
+// @Summary List hot posts
+// @Description List hot published posts from Redis ZSet with MySQL fallback.
+// @Tags posts
+// @Produce json
+// @Param limit query int false "max number of hot posts"
+// @Success 200 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Router /api/v1/posts/hot [get]
+func (p *PostController) Hot(c *gin.Context) {
+	var query dto.ListHotPostsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		response.Error(c, http.StatusBadRequest, response.CodeBadRequest, "invalid query", nil)
+		return
+	}
+
+	result, err := p.postService.Hot(c.Request.Context(), query)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+
+	response.Success(c, result)
+}
+
 // Detail godoc
 // @Summary Post detail
 // @Description Return a published post detail.

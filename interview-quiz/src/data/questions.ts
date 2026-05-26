@@ -91,6 +91,13 @@ export const modules: QuizModule[] = [
     subtitle: "PublicUser、隐私边界、计数失效",
     accent: "#0f766e",
     summary: "理解用户公开主页为什么能缓存，以及关注、发帖、删帖如何影响公开资料中的计数字段。"
+  },
+  {
+    id: "module-v3-hot-posts",
+    title: "V3 模块 3：热门帖子排行榜",
+    subtitle: "Redis ZSet、热度分、Top N、冷启动",
+    accent: "#f97316",
+    summary: "理解 Redis ZSet 如何承载热门帖子排序，以及互动行为如何刷新排行榜分数。"
   }
 ];
 
@@ -1134,5 +1141,72 @@ export const questions: Question[] = [
     keyPoints: ["UserController", "UserService", "UserCache", "UserRepository", "PublicUser VO", "TTL"],
     interviewTips: ["可以补一句：缓存失败不改变接口语义，因为 MySQL 仍是最终数据源。"],
     codeRefs: ["backend/internal/controller/user_controller.go", "backend/internal/service/user_service.go", "backend/internal/cache/user_cache.go", "backend/internal/repository/user_repository.go"]
+  },
+  {
+    id: "v3-hot-posts-zset-1",
+    moduleId: "module-v3-hot-posts",
+    type: "single",
+    title: "为什么热门帖子用 Redis ZSet？",
+    prompt: "FeedLab V3 使用 `rank:hot_posts` 做热门帖子排行榜。为什么 Redis ZSet 比普通 String 或 List 更适合这个场景？",
+    choices: [
+      { id: "A", text: "ZSet 同时保存成员和分数，并支持按分数快速取 Top N" },
+      { id: "B", text: "ZSet 会自动生成帖子正文" },
+      { id: "C", text: "ZSet 可以替代 MySQL 持久化所有帖子" },
+      { id: "D", text: "ZSet 不需要业务代码维护分数" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "热门榜本质是 member + score 的排序问题。ZSet 可以把 post_id 作为 member，把热度分作为 score，用 ZREVRANGE/ZRevRangeWithScores 取 Top N。",
+    explanation: "String 适合缓存单值，List 适合队列或按插入顺序读取，ZSet 才适合按业务分数排序。",
+    whyOthersWrong: {
+      B: "ZSet 只保存成员和分数，不生成帖子内容。",
+      C: "MySQL 仍是帖子最终数据源，ZSet 只做排行榜索引。",
+      D: "热度分需要业务代码在点赞、收藏、评论等写操作后刷新。"
+    },
+    keyPoints: ["ZSet", "member", "score", "Top N", "排行榜"],
+    interviewTips: ["可以说：ZSet 里只放 post_id 和 score，详情仍回 MySQL 查，避免 Redis 存大对象。"],
+    codeRefs: ["backend/internal/cache/hot_post_cache.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "v3-hot-posts-score-1",
+    moduleId: "module-v3-hot-posts",
+    type: "short",
+    title: "热度分公式怎么设计？",
+    prompt: "FeedLab 当前热门帖子分数是 `like_count * 3 + collect_count * 5 + comment_count * 4`。请解释这个公式的含义和局限。",
+    referenceAnswer: "这个公式把点赞、收藏、评论转换成一个热度分。点赞表示轻量认可，权重 3；评论互动更强，权重 4；收藏表示长期兴趣，权重 5。局限是暂时没有时间衰减和浏览量，所以老帖子可能长期占榜，后续可以加入发布时间衰减或 view_count。",
+    explanation: "热度分不是绝对正确，而是业务策略。面试时重点讲清楚为什么有权重，以及后续如何演进。",
+    keyPoints: ["点赞权重", "评论权重", "收藏权重", "时间衰减", "可演进"],
+    interviewTips: ["可以主动说：V3 先做简单可解释的公式，后续再加时间衰减和浏览量。"],
+    codeRefs: ["backend/internal/service/hot_score.go", "backend/internal/model/post.go"]
+  },
+  {
+    id: "v3-hot-posts-refresh-1",
+    moduleId: "module-v3-hot-posts",
+    type: "multiple",
+    title: "哪些操作会刷新热门榜？",
+    prompt: "下面哪些操作成功后应该刷新或移除 `rank:hot_posts` 中的帖子？",
+    choices: [
+      { id: "A", text: "点赞或取消点赞帖子" },
+      { id: "B", text: "收藏或取消收藏帖子" },
+      { id: "C", text: "发布或删除评论" },
+      { id: "D", text: "删除帖子" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "点赞、收藏、评论会改变热度分，所以要刷新 ZSet score。删除帖子会让帖子不可见，所以要从 `rank:hot_posts` 移除。",
+    explanation: "排行榜一致性和缓存一致性类似：先找出哪些写操作会影响榜单分数或可见性，再在这些写操作后更新 Redis。",
+    keyPoints: ["刷新 score", "移除删除帖子", "互动计数", "可见性"],
+    interviewTips: ["可以强调：排行榜里只保留 published 帖子，软删除后不能继续出现在榜单。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/service/collect_service.go", "backend/internal/service/comment_service.go", "backend/internal/service/post_service.go"]
+  },
+  {
+    id: "v3-hot-posts-code-1",
+    moduleId: "module-v3-hot-posts",
+    type: "code",
+    title: "热门帖子接口的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/posts/hot?limit=10 请求发生了什么。",
+    referenceAnswer: "请求进入 router 后匹配到 PostController.Hot。Controller 绑定 limit 参数后调用 PostService.Hot。Service 先从 HotPostCache.Top 读取 Redis ZSet `rank:hot_posts` 的 Top N post_id 和 score，再用 PostRepository.FindPublishedByIDs 回 MySQL 查 published 帖子详情，并按 Redis 返回顺序组装 PostList。如果 ZSet 为空，则用 PostRepository.ListHotPublished 从 MySQL 兜底取一批帖子，并根据计数字段计算 hot_score 后回填 Redis。",
+    explanation: "这道题训练你说明 Redis 只负责排序索引，MySQL 仍负责完整帖子数据。",
+    keyPoints: ["PostController.Hot", "HotPostCache.Top", "rank:hot_posts", "FindPublishedByIDs", "MySQL 兜底", "回填 ZSet"],
+    interviewTips: ["可以补一句：冷启动兜底能让本地测试和新环境部署时接口不返回空。"],
+    codeRefs: ["backend/internal/controller/post_controller.go", "backend/internal/service/post_service.go", "backend/internal/cache/hot_post_cache.go", "backend/internal/repository/post_repository.go"]
   }
 ];

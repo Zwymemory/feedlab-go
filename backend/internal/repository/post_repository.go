@@ -78,6 +78,40 @@ func (r *PostRepository) ListPublished(ctx context.Context, page int, pageSize i
 	return posts, total, nil
 }
 
+func (r *PostRepository) ListHotPublished(ctx context.Context, limit int) ([]model.Post, error) {
+	var posts []model.Post
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Where("status = ?", "published").
+		Order("hot_score DESC").
+		Order("like_count DESC").
+		Order("collect_count DESC").
+		Order("comment_count DESC").
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&posts).Error
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
+}
+
+func (r *PostRepository) FindPublishedByIDs(ctx context.Context, ids []uint64) ([]model.Post, error) {
+	if len(ids) == 0 {
+		return []model.Post{}, nil
+	}
+
+	var posts []model.Post
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Where("id IN ? AND status = ?", ids, "published").
+		Find(&posts).Error
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
+}
+
 func (r *PostRepository) ListPublishedByUser(ctx context.Context, userID uint64, page int, pageSize int) ([]model.Post, int64, error) {
 	var total int64
 	query := r.db.WithContext(ctx).
@@ -176,6 +210,20 @@ func (r *PostRepository) IncrementCommentCount(ctx context.Context, postID uint6
 		Model(&model.Post{}).
 		Where("id = ? AND status = ?", postID, "published").
 		UpdateColumn("comment_count", gorm.Expr("CASE WHEN comment_count + ? < 0 THEN 0 ELSE comment_count + ? END", delta, delta))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *PostRepository) UpdateHotScore(ctx context.Context, postID uint64, score float64) error {
+	result := r.db.WithContext(ctx).
+		Model(&model.Post{}).
+		Where("id = ? AND status = ?", postID, "published").
+		UpdateColumn("hot_score", score)
 	if result.Error != nil {
 		return result.Error
 	}

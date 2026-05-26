@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, tokenStore } from "./api/client";
 import type {
   Comment,
@@ -87,6 +87,8 @@ function App() {
   const [followUsers, setFollowUsers] = useState<PublicUser[]>([]);
   const [followUsersTotal, setFollowUsersTotal] = useState(0);
   const [followUsersLoading, setFollowUsersLoading] = useState(false);
+  const statusPanelRef = useRef<HTMLElement | null>(null);
+  const [statusPanelTop, setStatusPanelTop] = useState(28);
 
   const tokenPreview = useMemo(() => {
     if (!token) {
@@ -141,6 +143,29 @@ function App() {
     }
     void loadFollowUsers(profileUser.id, followListMode);
   }, [profileUser?.id, followListMode]);
+
+  useEffect(() => {
+    const panel = statusPanelRef.current;
+    if (!panel) {
+      return;
+    }
+
+    const updateStatusPanelTop = () => {
+      const viewportGap = 28;
+      const nextTop = Math.min(viewportGap, window.innerHeight - panel.offsetHeight - viewportGap);
+      setStatusPanelTop(nextTop);
+    };
+
+    updateStatusPanelTop();
+    const resizeObserver = new ResizeObserver(updateStatusPanelTop);
+    resizeObserver.observe(panel);
+    window.addEventListener("resize", updateStatusPanelTop);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateStatusPanelTop);
+    };
+  }, []);
 
   async function checkHealth() {
     setCheckingHealth(true);
@@ -728,7 +753,11 @@ function App() {
   return (
     <main className="app-shell">
       <section className="workspace">
-        <aside className="status-panel">
+        <aside
+          ref={statusPanelRef}
+          className="status-panel"
+          style={{ "--status-panel-top": `${statusPanelTop}px` } as CSSProperties & Record<"--status-panel-top", string>}
+        >
           <div className="brand-block">
             <span className="brand-mark">FL</span>
             <div>

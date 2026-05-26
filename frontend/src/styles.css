@@ -52,7 +52,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
   gap: 18px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .status-panel,
@@ -66,10 +66,8 @@ button:disabled {
 
 .status-panel {
   position: sticky;
-  top: 28px;
+  top: var(--status-panel-top, 28px);
   align-self: start;
-  max-height: calc(100vh - 56px);
-  overflow-y: auto;
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -261,15 +259,12 @@ label span {
   background: #12a594;
 }
 
-.current-user {
-  min-height: 230px;
-}
-
 .user-summary {
   padding: 14px;
   align-items: flex-start;
   gap: 12px;
   flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .avatar {
@@ -296,6 +291,7 @@ label span {
 
 .user-summary dl {
   width: 100%;
+  flex: 0 0 100%;
   margin: 8px 0 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -303,6 +299,7 @@ label span {
 }
 
 .user-summary dl div {
+  min-width: 0;
   padding: 10px;
   border-radius: 8px;
   background: #ffffff;

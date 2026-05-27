@@ -20,9 +20,10 @@ type CacheRankStatus struct {
 }
 
 type PostCacheStatus struct {
-	PostID        uint64             `json:"post_id"`
-	PostDetail    CacheKeyStatus     `json:"post_detail"`
-	PostViewCount CacheCounterStatus `json:"post_view_count"`
-	Comments      CacheKeyStatus     `json:"comments"`
-	HotRank       CacheRankStatus    `json:"hot_rank"`
+	PostID         uint64             `json:"post_id"`
+	PostDetail     CacheKeyStatus     `json:"post_detail"`
+	PostDetailNull CacheKeyStatus     `json:"post_detail_null"`
+	PostViewCount  CacheCounterStatus `json:"post_view_count"`
+	Comments       CacheKeyStatus     `json:"comments"`
+	HotRank        CacheRankStatus    `json:"hot_rank"`
 }

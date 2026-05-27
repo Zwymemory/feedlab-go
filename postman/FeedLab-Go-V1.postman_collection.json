@@ -2458,6 +2458,83 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 20 - V3 Null Cache Protection",
+      "item": [
+        {
+          "name": "GET /api/v1/posts/:id - missing post writes null cache",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"missing post returns 40400\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(40400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/99999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "99999999"
+              ]
+            },
+            "description": "V3 空值缓存：不存在帖子第一次请求后会写入 post:detail:null:99999999，TTL 默认 60 秒。可运行 redis-cli TTL post:detail:null:99999999 验证。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/users/:id - missing user writes null cache",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"missing user returns 40400\", function () {",
+                  "  pm.response.to.have.status(404);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(40400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/99999999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "99999999"
+              ]
+            },
+            "description": "V3 空值缓存：不存在用户第一次请求后会写入 user:profile:null:99999999，TTL 默认 60 秒。可运行 redis-cli TTL user:profile:null:99999999 验证。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

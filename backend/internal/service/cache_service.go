@@ -31,10 +31,15 @@ func (s *CacheService) PostStatus(ctx context.Context, postID uint64, query dto.
 	}
 
 	postDetailKey := cache.PostDetailKey(postID)
+	postDetailNullKey := cache.PostDetailNullKey(postID)
 	postViewKey := cache.PostViewCountKey(postID)
 	commentsKey := cache.PostCommentsKey(postID, page, pageSize)
 
 	postDetail, err := s.keyStatus(ctx, postDetailKey)
+	if err != nil {
+		return nil, err
+	}
+	postDetailNull, err := s.keyStatus(ctx, postDetailNullKey)
 	if err != nil {
 		return nil, err
 	}
@@ -52,11 +57,12 @@ func (s *CacheService) PostStatus(ctx context.Context, postID uint64, query dto.
 	}
 
 	return &vo.PostCacheStatus{
-		PostID:        postID,
-		PostDetail:    postDetail,
-		PostViewCount: postView,
-		Comments:      comments,
-		HotRank:       hotRank,
+		PostID:         postID,
+		PostDetail:     postDetail,
+		PostDetailNull: postDetailNull,
+		PostViewCount:  postView,
+		Comments:       comments,
+		HotRank:        hotRank,
 	}, nil
 }
 

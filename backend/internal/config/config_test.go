@@ -55,4 +55,7 @@ jwt:
 	if cfg.Redis.CommentListTTLSeconds != 120 {
 		t.Fatalf("expected default comment list ttl seconds, got %d", cfg.Redis.CommentListTTLSeconds)
 	}
+	if cfg.Redis.NullCacheTTLSeconds != 60 {
+		t.Fatalf("expected default null cache ttl seconds, got %d", cfg.Redis.NullCacheTTLSeconds)
+	}
 }

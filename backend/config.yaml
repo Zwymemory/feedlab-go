@@ -23,6 +23,7 @@ redis:
   post_view_ttl_seconds: 86400
   post_view_flush_threshold: 100
   comment_list_ttl_seconds: 120
+  null_cache_ttl_seconds: 60
 
 jwt:
   secret: "feedlab_v1_change_me"

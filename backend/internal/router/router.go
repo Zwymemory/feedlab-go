@@ -52,8 +52,9 @@ func New(deps Dependencies) *gin.Engine {
 	userFollowRepository := repository.NewUserFollowRepository(deps.MySQL)
 	commentRepository := repository.NewCommentRepository(deps.MySQL)
 	commentLikeRepository := repository.NewCommentLikeRepository(deps.MySQL)
-	postCache := cache.NewPostCache(deps.Redis, time.Duration(deps.Config.Redis.PostDetailTTLSeconds)*time.Second)
-	userCache := cache.NewUserCache(deps.Redis, time.Duration(deps.Config.Redis.UserProfileTTLSeconds)*time.Second)
+	nullCacheTTL := time.Duration(deps.Config.Redis.NullCacheTTLSeconds) * time.Second
+	postCache := cache.NewPostCache(deps.Redis, time.Duration(deps.Config.Redis.PostDetailTTLSeconds)*time.Second, nullCacheTTL)
+	userCache := cache.NewUserCache(deps.Redis, time.Duration(deps.Config.Redis.UserProfileTTLSeconds)*time.Second, nullCacheTTL)
 	hotPostCache := cache.NewHotPostCache(deps.Redis)
 	postViewCache := cache.NewPostViewCache(deps.Redis, time.Duration(deps.Config.Redis.PostViewTTLSeconds)*time.Second)
 	commentCache := cache.NewCommentCache(deps.Redis, time.Duration(deps.Config.Redis.CommentListTTLSeconds)*time.Second)

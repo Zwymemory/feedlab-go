@@ -34,9 +34,13 @@ func (s *UserService) PublicProfile(ctx context.Context, userID uint64) (*vo.Pub
 	if cached, ok, err := s.userCache.GetPublicProfile(ctx, userID); err == nil && ok {
 		return cached, nil
 	}
+	if exists, err := s.userCache.ExistsPublicProfileNull(ctx, userID); err == nil && exists {
+		return nil, ErrNotFound
+	}
 
 	user, err := s.users.FindByID(ctx, userID)
 	if errors.Is(err, repository.ErrNotFound) {
+		_ = s.userCache.SetPublicProfileNull(ctx, userID)
 		return nil, ErrNotFound
 	}
 	if err != nil {

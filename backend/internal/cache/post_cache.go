@@ -13,18 +13,24 @@ import (
 )
 
 const PostDetailKeyPrefix = "post:detail"
+const PostDetailNullKeyPrefix = "post:detail:null"
 
 type PostCache struct {
-	redis *redis.Client
-	ttl   time.Duration
+	redis   *redis.Client
+	ttl     time.Duration
+	nullTTL time.Duration
 }
 
-func NewPostCache(redis *redis.Client, ttl time.Duration) *PostCache {
-	return &PostCache{redis: redis, ttl: ttl}
+func NewPostCache(redis *redis.Client, ttl time.Duration, nullTTL time.Duration) *PostCache {
+	return &PostCache{redis: redis, ttl: ttl, nullTTL: nullTTL}
 }
 
 func PostDetailKey(postID uint64) string {
 	return fmt.Sprintf("%s:%d", PostDetailKeyPrefix, postID)
+}
+
+func PostDetailNullKey(postID uint64) string {
+	return fmt.Sprintf("%s:%d", PostDetailNullKeyPrefix, postID)
 }
 
 func (c *PostCache) Get(ctx context.Context, postID uint64) (*vo.Post, bool, error) {
@@ -47,6 +53,17 @@ func (c *PostCache) Get(ctx context.Context, postID uint64) (*vo.Post, bool, err
 	return &post, true, nil
 }
 
+func (c *PostCache) ExistsNull(ctx context.Context, postID uint64) (bool, error) {
+	if c == nil || c.redis == nil || c.nullTTL <= 0 {
+		return false, nil
+	}
+	exists, err := c.redis.Exists(ctx, PostDetailNullKey(postID)).Result()
+	if err != nil {
+		return false, err
+	}
+	return exists > 0, nil
+}
+
 func (c *PostCache) Set(ctx context.Context, post vo.Post) error {
 	if c == nil || c.redis == nil || c.ttl <= 0 {
 		return nil
@@ -59,9 +76,16 @@ func (c *PostCache) Set(ctx context.Context, post vo.Post) error {
 	return c.redis.Set(ctx, PostDetailKey(post.ID), body, c.ttl).Err()
 }
 
+func (c *PostCache) SetNull(ctx context.Context, postID uint64) error {
+	if c == nil || c.redis == nil || c.nullTTL <= 0 {
+		return nil
+	}
+	return c.redis.Set(ctx, PostDetailNullKey(postID), "1", c.nullTTL).Err()
+}
+
 func (c *PostCache) Delete(ctx context.Context, postID uint64) error {
 	if c == nil || c.redis == nil {
 		return nil
 	}
-	return c.redis.Del(ctx, PostDetailKey(postID)).Err()
+	return c.redis.Del(ctx, PostDetailKey(postID), PostDetailNullKey(postID)).Err()
 }

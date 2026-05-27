@@ -10,9 +10,25 @@ func TestPostDetailKey(t *testing.T) {
 	}
 }
 
+func TestPostDetailNullKey(t *testing.T) {
+	got := PostDetailNullKey(42)
+	want := "post:detail:null:42"
+	if got != want {
+		t.Fatalf("unexpected key: got %q want %q", got, want)
+	}
+}
+
 func TestUserProfileKey(t *testing.T) {
 	got := UserProfileKey(7)
 	want := "user:profile:7"
+	if got != want {
+		t.Fatalf("unexpected key: got %q want %q", got, want)
+	}
+}
+
+func TestUserProfileNullKey(t *testing.T) {
+	got := UserProfileNullKey(7)
+	want := "user:profile:null:7"
 	if got != want {
 		t.Fatalf("unexpected key: got %q want %q", got, want)
 	}

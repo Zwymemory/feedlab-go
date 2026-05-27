@@ -126,6 +126,13 @@ export const modules: QuizModule[] = [
     subtitle: "TTL、存在性、诊断接口、安全边界",
     accent: "#475569",
     summary: "理解为什么真实项目需要缓存可观测性，以及诊断接口如何帮助验证 Redis Key 是否按预期工作。"
+  },
+  {
+    id: "module-v3-null-cache",
+    title: "V3 模块 8：空值缓存防穿透",
+    subtitle: "缓存穿透、短 TTL、404 降载",
+    accent: "#be123c",
+    summary: "理解为什么不存在的数据也需要短暂缓存，以及空值缓存如何保护 MySQL。"
   }
 ];
 
@@ -1510,5 +1517,72 @@ export const questions: Question[] = [
     keyPoints: ["RequireAuth", "CacheController", "CacheService", "TTL", "GET", "ZScore", "PostCacheStatus"],
     interviewTips: ["可以强调：这个接口不查 MySQL，也不返回缓存正文，只做 Redis 状态观测。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/cache_controller.go", "backend/internal/service/cache_service.go", "backend/internal/vo/cache.go"]
+  },
+  {
+    id: "v3-null-cache-why-1",
+    moduleId: "module-v3-null-cache",
+    type: "single",
+    title: "什么是缓存穿透？",
+    prompt: "FeedLab V3 给不存在的帖子和用户加空值缓存。这个设计主要解决什么问题？",
+    choices: [
+      { id: "A", text: "大量请求访问不存在 ID 时，普通缓存查不到，每次都打到 MySQL" },
+      { id: "B", text: "Redis 内存太大，需要删除所有 Key" },
+      { id: "C", text: "JWT Token 过期时间太短" },
+      { id: "D", text: "GORM 无法执行软删除" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "缓存穿透指请求访问不存在的数据，Redis 没有正常缓存，导致每次请求都回源 MySQL。空值缓存会短暂记住“这个 ID 不存在”，后续同 ID 请求可以直接返回 404，减少数据库压力。",
+    explanation: "缓存穿透和缓存击穿、缓存雪崩不一样。穿透的重点是请求不存在数据，普通缓存永远 miss。",
+    whyOthersWrong: {
+      B: "空值缓存会增加少量 Key，不是删除所有 Key。",
+      C: "JWT 过期和缓存穿透无关。",
+      D: "软删除不是这个模块要解决的问题。"
+    },
+    keyPoints: ["不存在 ID", "Redis miss", "MySQL 压力", "404", "短 TTL"],
+    interviewTips: ["可以补一句：空值缓存通常 TTL 要短，避免长期误挡。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "v3-null-cache-key-1",
+    moduleId: "module-v3-null-cache",
+    type: "short",
+    title: "空值缓存 Key 和 TTL",
+    prompt: "请解释 `post:detail:null:{post_id}` 和 `user:profile:null:{user_id}` 的用途、缓存内容和默认 TTL。",
+    referenceAnswer: "`post:detail:null:{post_id}` 表示某个帖子详情刚刚确认不存在或不可公开访问；`user:profile:null:{user_id}` 表示某个用户公开资料刚刚确认不存在。它们只保存哨兵值 `1`，不保存业务正文。默认 TTL 是 60 秒，可通过 redis.null_cache_ttl_seconds 配置。",
+    explanation: "空值缓存不是为了展示数据，而是为了拦住重复的无效请求。",
+    keyPoints: ["post:detail:null", "user:profile:null", "哨兵值", "默认 60 秒", "不保存正文"],
+    interviewTips: ["回答时要强调 TTL 短：防穿透和避免误挡之间要平衡。"],
+    codeRefs: ["backend/internal/cache/post_cache.go", "backend/internal/cache/user_cache.go", "backend/config.yaml"]
+  },
+  {
+    id: "v3-null-cache-flow-1",
+    moduleId: "module-v3-null-cache",
+    type: "multiple",
+    title: "空值缓存的请求链路",
+    prompt: "以 GET /api/v1/posts/:id 为例，下面哪些步骤符合当前实现？",
+    choices: [
+      { id: "A", text: "先查正常帖子详情缓存 post:detail:{id}" },
+      { id: "B", text: "正常缓存未命中后，再检查 post:detail:null:{id}" },
+      { id: "C", text: "空值缓存命中时直接返回 404，不再查 MySQL" },
+      { id: "D", text: "MySQL 确认不存在后写入短 TTL 空值缓存" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "当前链路是：先查正常缓存；正常缓存未命中后查空值缓存；空值缓存命中则直接返回 404；如果还未命中，才查 MySQL。MySQL 返回不存在时，写入短 TTL 空值缓存。",
+    explanation: "这个顺序很重要。正常数据缓存优先，空值缓存只用于处理不存在的数据。",
+    keyPoints: ["正常缓存优先", "空值缓存第二", "404", "MySQL 回源", "SetNull"],
+    interviewTips: ["可以说：空值缓存不能替代正常缓存，它只是 miss 后的一层保护。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/cache/post_cache.go"]
+  },
+  {
+    id: "v3-null-cache-code-1",
+    moduleId: "module-v3-null-cache",
+    type: "code",
+    title: "空值缓存的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/users/:id 请求遇到不存在用户时发生了什么。",
+    referenceAnswer: "请求进入 UserController.PublicProfile，Controller 解析 user id 后调用 UserService.PublicProfile。Service 先调用 UserCache.GetPublicProfile 读取正常公开资料缓存；未命中后调用 ExistsPublicProfileNull 检查 `user:profile:null:{id}`。如果空值缓存命中，直接返回 ErrNotFound。若空值缓存也未命中，则调用 UserRepository.FindByID 查 MySQL；当 Repository 返回不存在时，Service 调用 SetPublicProfileNull 写入短 TTL 空值缓存，然后返回 404。",
+    explanation: "这道题训练你说明缓存穿透保护在 Service 层如何编排，而不是散落在 Controller 或 Repository。",
+    keyPoints: ["UserController", "UserService", "UserCache", "ExistsPublicProfileNull", "FindByID", "SetPublicProfileNull"],
+    interviewTips: ["可以强调：Repository 仍然只关心数据库，不知道 Redis。"],
+    codeRefs: ["backend/internal/controller/user_controller.go", "backend/internal/service/user_service.go", "backend/internal/cache/user_cache.go", "backend/internal/repository/user_repository.go"]
   }
 ];

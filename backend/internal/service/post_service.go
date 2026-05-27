@@ -212,9 +212,13 @@ func (s *PostService) Detail(ctx context.Context, id uint64) (*vo.Post, error) {
 		s.applyViewCount(ctx, &result)
 		return &result, nil
 	}
+	if exists, err := s.postCache.ExistsNull(ctx, id); err == nil && exists {
+		return nil, ErrNotFound
+	}
 
 	post, err := s.posts.FindPublishedByID(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
+		_ = s.postCache.SetNull(ctx, id)
 		return nil, ErrNotFound
 	}
 	if err != nil {

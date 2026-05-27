@@ -8,6 +8,7 @@ export type HealthStatus = {
   api: string;
   mysql: string;
   redis: string;
+  rabbitmq?: string;
 };
 
 export type User = {
@@ -70,6 +71,13 @@ export type PostList = {
   page: number;
   page_size: number;
   total: number;
+};
+
+export type FeedPostList = {
+  items: Post[];
+  next_cursor: string;
+  has_more: boolean;
+  limit: number;
 };
 
 export type LikeStatus = {
@@ -146,4 +154,36 @@ export type RegisterPayload = {
 export type LoginPayload = {
   email: string;
   password: string;
+};
+
+export type NotificationItem = {
+  id: number;
+  user_id: number;
+  actor_id: number;
+  actor: PublicUser;
+  type: string;
+  subject_type: string;
+  subject_id: number;
+  post_id: number;
+  comment_id: number;
+  content: string;
+  is_read: boolean;
+  message_id: string;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type NotificationList = {
+  items: NotificationItem[];
+  page: number;
+  page_size: number;
+  total: number;
+};
+
+export type UnreadNotificationCount = {
+  unread_count: number;
+};
+
+export type ReadNotificationResult = {
+  read: boolean;
 };

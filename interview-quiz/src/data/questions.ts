@@ -161,6 +161,20 @@ export const modules: QuizModule[] = [
     subtitle: "notifications 表、未读数、已读、幂等",
     accent: "#1d4ed8",
     summary: "理解通知表如何建模，为什么 message_id 唯一索引能解决 MQ 重复消费问题。"
+  },
+  {
+    id: "module-v5-showcase-frontend",
+    title: "V5 模块 1：展示型前端",
+    subtitle: "React Router、GSAP、作品集展示",
+    accent: "#06b6d4",
+    summary: "理解为什么实习展示项目需要一个好看的多路由前端，以及 GSAP 动效应该服务于信息表达。"
+  },
+  {
+    id: "module-v5-feed-demo",
+    title: "V5 模块 2：Feed 演示闭环",
+    subtitle: "最新、热门、游标、通知、演示账号",
+    accent: "#a855f7",
+    summary: "理解如何把 V1-V4 的后端能力整合成可演示路径，让面试官快速看到项目价值。"
   }
 ];
 
@@ -1852,5 +1866,72 @@ export const questions: Question[] = [
     keyPoints: ["RequireAuth", "user_id from context", "私有数据", "归属校验", "不能越权"],
     interviewTips: ["可以强调：鉴权不是只看有没有 Token，还要把操作限定到当前用户的数据范围。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/notification_controller.go", "backend/internal/service/notification_service.go"]
+  },
+  {
+    id: "v5-router-why-1",
+    moduleId: "module-v5-showcase-frontend",
+    type: "single",
+    title: "为什么 V5 要改成多路由？",
+    prompt: "FeedLab V5 把前端拆成 /、/feed、/notifications、/profile、/lab 等路由。最核心的展示价值是什么？",
+    choices: [
+      { id: "A", text: "React Router 可以替代后端 Gin 路由" },
+      { id: "B", text: "多路由能把总览、Feed、通知、用户、系统状态拆成清晰场景，面试演示更容易跟上" },
+      { id: "C", text: "多路由会自动提高 MySQL 查询性能" },
+      { id: "D", text: "用了多路由就不需要 JWT" }
+    ],
+    correctAnswers: ["B"],
+    referenceAnswer: "V5 的目标是项目展示。多路由把不同业务场景拆开，避免所有表单和列表堆在一个页面里。面试时可以按“总览 -> Feed -> 通知 -> 用户主页 -> 系统驾驶舱”的顺序演示。",
+    explanation: "前端路由解决的是信息架构和展示体验，不是替代后端 API 路由。",
+    whyOthersWrong: {
+      A: "React Router 是浏览器端路由，Gin 仍然负责后端 API。",
+      C: "前端路由不会直接影响数据库性能。",
+      D: "需要登录的接口仍然必须携带 JWT。"
+    },
+    keyPoints: ["信息架构", "演示路径", "场景拆分", "React Router", "后端 API 仍由 Gin 提供"],
+    interviewTips: ["可以说：V5 不是炫页面，而是让后端能力更容易被看见。"],
+    codeRefs: ["frontend/src/main.tsx", "frontend/src/App.tsx"]
+  },
+  {
+    id: "v5-gsap-role-1",
+    moduleId: "module-v5-showcase-frontend",
+    type: "short",
+    title: "GSAP 在项目里应该承担什么角色？",
+    prompt: "请解释 FeedLab V5 为什么引入 GSAP，以及动效应该控制在哪些边界内。",
+    referenceAnswer: "GSAP 用来增强展示体验，例如动态背景、路由进入动画和卡片 stagger 浮现。它不负责业务状态，登录、Feed、通知等数据仍由 React state 和 API Client 管理。动效应该服务于信息层次，不能遮挡内容、拖慢操作或让页面变得难以阅读。",
+    explanation: "面试官如果问 GSAP，重点不是会不会写动画，而是你是否知道动效和业务逻辑的边界。",
+    keyPoints: ["展示增强", "不管理业务状态", "路由进入动画", "stagger", "可读性"],
+    interviewTips: ["可以补一句：我把 GSAP 放在 useEffect 里，并在清理函数中 revert，避免动画残留。"],
+    codeRefs: ["frontend/src/App.tsx", "frontend/src/styles.css"]
+  },
+  {
+    id: "v5-feed-integration-1",
+    moduleId: "module-v5-feed-demo",
+    type: "multiple",
+    title: "V5 Feed 页面整合了哪些后端能力？",
+    prompt: "关于 V5 的 /feed 页面，下面哪些说法正确？",
+    choices: [
+      { id: "A", text: "最新 Feed 调用公开帖子列表接口" },
+      { id: "B", text: "热门 Feed 调用 Redis ZSet 支撑的热门帖子接口" },
+      { id: "C", text: "游标 Feed 调用 cursor 分页接口" },
+      { id: "D", text: "点赞和评论会继续触发 V4 RabbitMQ 通知链路" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "V5 的 Feed 页面把已有后端能力放在一起演示：最新列表、热门榜、游标分页、发帖、点赞、收藏、评论。点赞和评论仍然走后端 Service，成功后会触发 V4 的异步通知事件。",
+    explanation: "V5 没有重写后端逻辑，而是把 V1-V4 的能力组织成一个可演示前端。",
+    keyPoints: ["最新 Feed", "热门 Feed", "游标分页", "互动接口", "异步通知"],
+    interviewTips: ["回答时强调：V5 是整合展示层，不是把业务逻辑搬到前端。"],
+    codeRefs: ["frontend/src/App.tsx", "frontend/src/api/client.ts", "backend/internal/controller/post_controller.go"]
+  },
+  {
+    id: "v5-demo-script-1",
+    moduleId: "module-v5-feed-demo",
+    type: "short",
+    title: "如何用 V5 演示整个项目？",
+    prompt: "如果面试官给你 2 分钟介绍 FeedLab，你会如何使用 V5 页面演示？",
+    referenceAnswer: "我会先打开首页介绍技术路线：V1 基础闭环、V2 互动、V3 Redis、V4 RabbitMQ。然后进入 Feed 页面展示最新、热门和游标分页，发布一篇帖子并执行点赞、收藏、评论。接着切换到通知中心，说明互动行为会通过 RabbitMQ 异步写入通知表。最后打开用户主页和系统驾驶舱，展示公开 VO、关注关系以及 API/MySQL/Redis/RabbitMQ 健康状态。",
+    explanation: "这道题训练你把技术实现翻译成可展示路线。面试演示不是逐个文件念，而是按用户能看到的功能串起后端设计。",
+    keyPoints: ["首页技术路线", "Feed", "互动", "通知中心", "用户主页", "系统驾驶舱"],
+    interviewTips: ["先讲结果，再讲背后的技术。这样非后端面试官也能理解项目价值。"],
+    codeRefs: ["frontend/README.md", "frontend/src/App.tsx"]
   }
 ];

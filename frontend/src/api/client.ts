@@ -7,16 +7,20 @@ import type {
   CreateCommentPayload,
   CreatePostPayload,
   DeleteCommentResult,
+  FeedPostList,
   HealthStatus,
   LikeStatus,
   LoginPayload,
   LoginResult,
+  NotificationList,
   Post,
   PostList,
+  ReadNotificationResult,
   FollowStatus,
   PublicUser,
   PublicUserList,
   RegisterPayload,
+  UnreadNotificationCount,
   User
 } from "../types";
 
@@ -25,7 +29,7 @@ const API_BASE_LABEL = API_BASE_URL || "Vite proxy -> http://localhost:8080";
 const TOKEN_KEY = "feedlab_access_token";
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "DELETE" | "PATCH";
   body?: unknown;
   token?: string | null;
 };
@@ -167,6 +171,17 @@ export const api = {
     });
     return request<PostList>(`/api/v1/posts?${params.toString()}`);
   },
+  hotPosts(limit = 10) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    return request<PostList>(`/api/v1/posts/hot?${params.toString()}`);
+  },
+  feedPosts(cursor = "", limit = 10) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) {
+      params.set("cursor", cursor);
+    }
+    return request<FeedPostList>(`/api/v1/feed/posts?${params.toString()}`);
+  },
   createPost(payload: CreatePostPayload, token: string) {
     return request<Post>("/api/v1/posts", {
       method: "POST",
@@ -246,6 +261,29 @@ export const api = {
   deleteComment(commentID: number, token: string) {
     return request<DeleteCommentResult>(`/api/v1/comments/${commentID}`, {
       method: "DELETE",
+      token
+    });
+  },
+  notifications(token: string, page = 1, pageSize = 10, unreadOnly = false) {
+    const params = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      unread_only: String(unreadOnly)
+    });
+    return request<NotificationList>(`/api/v1/notifications?${params.toString()}`, { token });
+  },
+  unreadNotifications(token: string) {
+    return request<UnreadNotificationCount>("/api/v1/notifications/unread-count", { token });
+  },
+  markNotificationRead(notificationID: number, token: string) {
+    return request<ReadNotificationResult>(`/api/v1/notifications/${notificationID}/read`, {
+      method: "PATCH",
+      token
+    });
+  },
+  markAllNotificationsRead(token: string) {
+    return request<ReadNotificationResult>("/api/v1/notifications/read-all", {
+      method: "PATCH",
       token
     });
   }

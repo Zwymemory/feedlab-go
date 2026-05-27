@@ -30,5 +30,9 @@ jwt:
   issuer: "feedlab"
   expires_hours: 2
 
+rate_limit:
+  login_window_seconds: 60
+  login_max_attempts: 10
+
 log:
   level: "debug"

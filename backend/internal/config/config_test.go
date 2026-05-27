@@ -40,6 +40,12 @@ jwt:
 	if cfg.JWT.ExpiresHours != 2 {
 		t.Fatalf("expected default jwt expires hours, got %d", cfg.JWT.ExpiresHours)
 	}
+	if cfg.RateLimit.LoginWindowSeconds != 60 {
+		t.Fatalf("expected default login rate limit window seconds, got %d", cfg.RateLimit.LoginWindowSeconds)
+	}
+	if cfg.RateLimit.LoginMaxAttempts != 10 {
+		t.Fatalf("expected default login rate limit max attempts, got %d", cfg.RateLimit.LoginMaxAttempts)
+	}
 	if cfg.Redis.PostDetailTTLSeconds != 300 {
 		t.Fatalf("expected default post detail ttl seconds, got %d", cfg.Redis.PostDetailTTLSeconds)
 	}

@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	MySQL  MySQLConfig  `yaml:"mysql"`
-	Redis  RedisConfig  `yaml:"redis"`
-	JWT    JWTConfig    `yaml:"jwt"`
-	Log    LogConfig    `yaml:"log"`
+	Server    ServerConfig    `yaml:"server"`
+	MySQL     MySQLConfig     `yaml:"mysql"`
+	Redis     RedisConfig     `yaml:"redis"`
+	JWT       JWTConfig       `yaml:"jwt"`
+	RateLimit RateLimitConfig `yaml:"rate_limit"`
+	Log       LogConfig       `yaml:"log"`
 }
 
 type ServerConfig struct {
@@ -51,6 +52,11 @@ type JWTConfig struct {
 	Secret       string `yaml:"secret"`
 	Issuer       string `yaml:"issuer"`
 	ExpiresHours int    `yaml:"expires_hours"`
+}
+
+type RateLimitConfig struct {
+	LoginWindowSeconds int `yaml:"login_window_seconds"`
+	LoginMaxAttempts   int `yaml:"login_max_attempts"`
 }
 
 type LogConfig struct {
@@ -99,6 +105,12 @@ func (c *Config) withDefaults() {
 	}
 	if c.JWT.ExpiresHours == 0 {
 		c.JWT.ExpiresHours = 2
+	}
+	if c.RateLimit.LoginWindowSeconds == 0 {
+		c.RateLimit.LoginWindowSeconds = 60
+	}
+	if c.RateLimit.LoginMaxAttempts == 0 {
+		c.RateLimit.LoginMaxAttempts = 10
 	}
 	if c.Log.Level == "" {
 		c.Log.Level = "info"

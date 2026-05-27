@@ -128,10 +128,10 @@ func paths() gin.H {
 			}, nil, responseMap("201", "created", "400", "invalid request", "409", "resource conflict")),
 		},
 		"/api/v1/auth/login": gin.H{
-			"post": operation("auth", "Login user", "Login with email and password, then return an access token.", schemaRef("LoginRequest"), gin.H{
+			"post": operation("auth", "Login user", "Login with email and password, then return an access token. Redis rate limiting protects this endpoint from brute-force attempts.", schemaRef("LoginRequest"), gin.H{
 				"email":    "alice@example.com",
 				"password": "secret123",
-			}, nil, responseMap("200", "success", "400", "invalid request", "401", "invalid credentials")),
+			}, nil, responseMap("200", "success", "400", "invalid request", "401", "invalid credentials", "429", "too many requests")),
 		},
 		"/api/v1/users/me": gin.H{
 			"get": operation("users", "Current user profile", "Return the current user profile from JWT context.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),

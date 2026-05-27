@@ -75,6 +75,11 @@ func New(deps Dependencies) *gin.Engine {
 	commentController := controller.NewCommentController(commentService)
 	commentLikeController := controller.NewCommentLikeController(commentLikeService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
+	loginRateLimiter := middleware.NewRateLimiter(
+		deps.Redis,
+		time.Duration(deps.Config.RateLimit.LoginWindowSeconds)*time.Second,
+		deps.Config.RateLimit.LoginMaxAttempts,
+	)
 
 	engine.GET("/healthz", healthController.Health)
 	swagger.RegisterRoutes(engine)
@@ -82,7 +87,7 @@ func New(deps Dependencies) *gin.Engine {
 	api := engine.Group("/api/v1")
 	auth := api.Group("/auth")
 	auth.POST("/register", authController.Register)
-	auth.POST("/login", authController.Login)
+	auth.POST("/login", loginRateLimiter.Login(), authController.Login)
 
 	users := api.Group("/users")
 	users.Use(authMiddleware.RequireAuth())

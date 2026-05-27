@@ -133,6 +133,13 @@ export const modules: QuizModule[] = [
     subtitle: "缓存穿透、短 TTL、404 降载",
     accent: "#be123c",
     summary: "理解为什么不存在的数据也需要短暂缓存，以及空值缓存如何保护 MySQL。"
+  },
+  {
+    id: "module-v3-login-rate-limit",
+    title: "V3 模块 9：登录限流",
+    subtitle: "Redis INCR、固定窗口、中间件",
+    accent: "#991b1b",
+    summary: "理解登录入口为什么需要限流，以及 Gin 中间件如何用 Redis 限制暴力尝试。"
   }
 ];
 
@@ -1584,5 +1591,72 @@ export const questions: Question[] = [
     keyPoints: ["UserController", "UserService", "UserCache", "ExistsPublicProfileNull", "FindByID", "SetPublicProfileNull"],
     interviewTips: ["可以强调：Repository 仍然只关心数据库，不知道 Redis。"],
     codeRefs: ["backend/internal/controller/user_controller.go", "backend/internal/service/user_service.go", "backend/internal/cache/user_cache.go", "backend/internal/repository/user_repository.go"]
+  },
+  {
+    id: "v3-login-rate-limit-why-1",
+    moduleId: "module-v3-login-rate-limit",
+    type: "single",
+    title: "登录接口为什么要限流？",
+    prompt: "FeedLab V3 使用 Redis 保护 POST /api/v1/auth/login。最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "登录接口可能被暴力尝试密码，限流可以降低撞库和爆破风险" },
+      { id: "B", text: "登录接口必须使用 Redis 才能签发 JWT" },
+      { id: "C", text: "限流可以替代 bcrypt" },
+      { id: "D", text: "限流可以让 MySQL 不再保存用户表" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "登录接口是账号系统敏感入口。攻击者可以高频尝试邮箱和密码组合，限流能降低暴力破解和撞库风险，也能减轻数据库认证查询压力。",
+    explanation: "限流不是认证本身，而是认证入口的保护层。它和 bcrypt、JWT 是互补关系。",
+    whyOthersWrong: {
+      B: "JWT 签发不依赖 Redis。",
+      C: "bcrypt 负责密码哈希校验，不能被限流替代。",
+      D: "MySQL 仍保存用户账号数据。"
+    },
+    keyPoints: ["登录入口", "暴力破解", "撞库", "Redis 限流", "中间件"],
+    interviewTips: ["可以说：这类安全增强很适合作为实习项目的工程亮点。"],
+    codeRefs: ["backend/internal/middleware/rate_limit.go", "backend/internal/router/router.go"]
+  },
+  {
+    id: "v3-login-rate-limit-key-1",
+    moduleId: "module-v3-login-rate-limit",
+    type: "short",
+    title: "rate_limit:login:{ip} 的用途和 TTL",
+    prompt: "请解释 Redis Key `rate_limit:login:{ip}` 的用途、默认窗口和超过限制后的响应。",
+    referenceAnswer: "`rate_limit:login:{ip}` 记录某个 IP 在当前固定窗口内调用登录接口的次数。默认窗口是 60 秒，可通过 rate_limit.login_window_seconds 配置；默认最多 10 次，可通过 rate_limit.login_max_attempts 配置。超过后接口返回 HTTP 429，业务 code 为 42900，并返回 retry_after_seconds。",
+    explanation: "限流 Key 要说清楚维度、窗口、阈值和失败响应。当前维度是 IP，后续也可以扩展为 IP + email。",
+    keyPoints: ["IP 维度", "默认 60 秒", "默认 10 次", "HTTP 429", "retry_after_seconds"],
+    interviewTips: ["可以主动说明：IP 维度简单，但在 NAT 或代理场景可能误伤，需要结合业务调整。"],
+    codeRefs: ["backend/internal/middleware/rate_limit.go", "backend/config.yaml", "backend/internal/config/config.go"]
+  },
+  {
+    id: "v3-login-rate-limit-flow-1",
+    moduleId: "module-v3-login-rate-limit",
+    type: "multiple",
+    title: "登录限流中间件的执行链路",
+    prompt: "关于当前登录限流实现，下面哪些说法正确？",
+    choices: [
+      { id: "A", text: "限流中间件挂在 POST /api/v1/auth/login 上" },
+      { id: "B", text: "每次请求对 rate_limit:login:{ip} 执行 INCR" },
+      { id: "C", text: "第一次写入 Key 时设置过期时间" },
+      { id: "D", text: "超过阈值时直接返回 429，不再进入 AuthController.Login" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "当前路由把登录限流中间件挂到 POST /auth/login。请求进入中间件后对 IP 维度 Key 做 INCR；如果是窗口内第一次计数，会设置 EXPIRE。超过阈值时直接返回 429 并 Abort，不再进入登录 Controller。",
+    explanation: "这道题训练你理解 Gin 中间件的横切保护能力：它在 Controller 之前执行，可以提前拦截风险请求。",
+    keyPoints: ["Gin middleware", "INCR", "EXPIRE", "Abort", "Controller 前置"],
+    interviewTips: ["可以补一句：测试环境 Redis 为 nil 时会降级放行，避免影响单元测试。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/middleware/rate_limit.go"]
+  },
+  {
+    id: "v3-login-rate-limit-code-1",
+    moduleId: "module-v3-login-rate-limit",
+    type: "code",
+    title: "登录限流的代码链路",
+    prompt: "请按代码链路解释一次 POST /api/v1/auth/login 请求如何经过限流。",
+    referenceAnswer: "router.New 中创建 RateLimiter，并把 loginRateLimiter.Login() 挂到 auth.POST('/login')。请求进入该路由后先执行 RateLimiter.Login 中间件，根据 c.ClientIP 生成 `rate_limit:login:{ip}`，调用 Redis INCR 增加计数；如果 count 是 1，就设置窗口过期时间。count 没超过阈值时 c.Next 进入 AuthController.Login；超过阈值时返回统一响应，HTTP 429、code 42900，并 c.Abort 阻止后续登录逻辑。",
+    explanation: "面试官会关注你是否能说明中间件、Redis 命令和统一响应之间的关系。",
+    keyPoints: ["router.New", "RateLimiter.Login", "ClientIP", "INCR", "EXPIRE", "42900"],
+    interviewTips: ["可以强调：限流失败不应该进入密码校验，减少无效数据库压力。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/middleware/rate_limit.go", "backend/internal/response/response.go"]
   }
 ];

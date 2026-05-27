@@ -7,13 +7,14 @@ import (
 )
 
 const (
-	CodeSuccess       = 0
-	CodeBadRequest    = 40000
-	CodeInvalidToken  = 40001
-	CodeForbidden     = 40002
-	CodeNotFound      = 40400
-	CodeConflict      = 40900
-	CodeInternalError = 50000
+	CodeSuccess         = 0
+	CodeBadRequest      = 40000
+	CodeInvalidToken    = 40001
+	CodeForbidden       = 40002
+	CodeNotFound        = 40400
+	CodeConflict        = 40900
+	CodeTooManyRequests = 42900
+	CodeInternalError   = 50000
 )
 
 type Body struct {

@@ -35,6 +35,7 @@ func TestAuthenticatedInteractionRoutesRegister(t *testing.T) {
 		{method: http.MethodPost, path: "/api/v1/comments/1/like"},
 		{method: http.MethodDelete, path: "/api/v1/comments/1/like"},
 		{method: http.MethodDelete, path: "/api/v1/comments/1"},
+		{method: http.MethodGet, path: "/api/v1/cache/posts/1/status"},
 	}
 
 	for _, route := range routes {

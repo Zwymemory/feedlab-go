@@ -47,6 +47,7 @@ func spec() gin.H {
 			{"name": "follows", "description": "User follow relationships"},
 			{"name": "comments", "description": "Post comments and replies"},
 			{"name": "comment_likes", "description": "Comment like interactions"},
+			{"name": "cache", "description": "Redis cache inspection APIs"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -201,6 +202,12 @@ func paths() gin.H {
 		"/api/v1/posts/hot": gin.H{
 			"get": operationWithIDAndParameters("posts", "List hot posts", "List hot published posts from Redis ZSet with MySQL fallback.", nil, responseMap("200", "success", "400", "invalid query"), []gin.H{
 				queryParameter("limit", "Max number of hot posts, default 10, max 50.", 10, 1, 50),
+			}),
+		},
+		"/api/v1/cache/posts/{id}/status": gin.H{
+			"get": operationWithIDAndParameters("cache", "Inspect post cache status", "Inspect Redis keys related to a post without returning cached payloads.", bearerSecurity(), responseMap("200", "success", "400", "invalid query", "401", "invalid token"), []gin.H{
+				queryParameter("page", "Comment page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Comment page size, default 10, max 50.", 10, 1, 50),
 			}),
 		},
 		"/api/v1/posts/{id}/like": gin.H{

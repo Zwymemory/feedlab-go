@@ -33,6 +33,8 @@ func New(deps Dependencies) *gin.Engine {
 
 	healthService := service.NewHealthService(deps.MySQL, deps.Redis)
 	healthController := controller.NewHealthController(healthService)
+	cacheService := service.NewCacheService(deps.Redis)
+	cacheController := controller.NewCacheController(cacheService)
 
 	tokenManager, err := feedjwt.NewManager(
 		deps.Config.JWT.Secret,
@@ -94,6 +96,7 @@ func New(deps Dependencies) *gin.Engine {
 	api.DELETE("/users/:id/follow", authMiddleware.RequireAuth(), followController.Unfollow)
 	api.GET("/users/:id/followed", authMiddleware.RequireAuth(), followController.IsFollowed)
 	api.GET("/users/:id", userController.PublicProfile)
+	api.GET("/cache/posts/:id/status", authMiddleware.RequireAuth(), cacheController.PostStatus)
 
 	feed := api.Group("/feed")
 	feed.GET("/posts", postController.Feed)

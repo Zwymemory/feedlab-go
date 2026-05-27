@@ -119,6 +119,13 @@ export const modules: QuizModule[] = [
     subtitle: "分页 Key、列表缓存、写后失效",
     accent: "#0891b2",
     summary: "理解评论列表为什么适合短 TTL 缓存，以及创建、删除、点赞如何触发分页列表缓存失效。"
+  },
+  {
+    id: "module-v3-cache-observe",
+    title: "V3 模块 7：缓存观测接口",
+    subtitle: "TTL、存在性、诊断接口、安全边界",
+    accent: "#475569",
+    summary: "理解为什么真实项目需要缓存可观测性，以及诊断接口如何帮助验证 Redis Key 是否按预期工作。"
   }
 ];
 
@@ -1433,5 +1440,75 @@ export const questions: Question[] = [
     keyPoints: ["CommentController", "CommentService", "CommentCache", "CommentRepository", "CommentList VO", "TTL"],
     interviewTips: ["可以强调：列表缓存 Key 要包含分页参数，防止不同页互相覆盖。"],
     codeRefs: ["backend/internal/controller/comment_controller.go", "backend/internal/service/comment_service.go", "backend/internal/cache/comment_cache.go", "backend/internal/repository/comment_repository.go"]
+  },
+  {
+    id: "v3-cache-observe-why-1",
+    moduleId: "module-v3-cache-observe",
+    type: "single",
+    title: "为什么需要缓存观测接口？",
+    prompt: "FeedLab V3 新增 GET /api/v1/cache/posts/:id/status。这个接口最核心的工程价值是什么？",
+    choices: [
+      { id: "A", text: "帮助开发者验证 Redis Key 是否存在、TTL 是否正常、增量计数是否在工作" },
+      { id: "B", text: "替代所有业务接口" },
+      { id: "C", text: "让未登录用户读取缓存正文" },
+      { id: "D", text: "让 MySQL 不再需要保存帖子数据" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "缓存观测接口用于排查和验证缓存状态，例如 post:detail 是否存在、post:view_count 增量是多少、评论分页缓存 TTL 还剩多久、帖子是否在热门榜中。它能降低本地验证和线上排障成本。",
+    explanation: "真实项目里缓存不是写完就结束，还要能观察它是否按预期命中、失效和过期。",
+    whyOthersWrong: {
+      B: "观测接口只读缓存状态，不承载业务功能。",
+      C: "当前接口需要登录，并且不返回缓存正文。",
+      D: "MySQL 仍是最终数据源。"
+    },
+    keyPoints: ["可观测性", "TTL", "Key 存在性", "排障", "不返回缓存正文"],
+    interviewTips: ["可以说：缓存模块要能验证，否则很难证明缓存真的生效。"],
+    codeRefs: ["backend/internal/controller/cache_controller.go", "backend/internal/service/cache_service.go"]
+  },
+  {
+    id: "v3-cache-observe-security-1",
+    moduleId: "module-v3-cache-observe",
+    type: "multiple",
+    title: "缓存观测接口的安全边界",
+    prompt: "关于缓存观测接口的安全设计，下面哪些说法合理？",
+    choices: [
+      { id: "A", text: "接口需要登录，避免公开暴露内部缓存结构" },
+      { id: "B", text: "接口只返回 exists、ttl_seconds、计数增量和分数，不返回缓存正文" },
+      { id: "C", text: "观测接口是只读操作，不需要事务" },
+      { id: "D", text: "观测接口应该允许任何人删除 Redis Key" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "缓存 Key 属于系统内部实现细节，所以接口需要登录。为了避免泄露缓存正文，响应只返回状态、TTL、计数增量和热门榜分数。它不修改业务数据，所以不需要事务。",
+    explanation: "诊断能力也要有边界：能帮助排障，但不能变成绕过业务接口的数据入口或管理入口。",
+    whyOthersWrong: {
+      D: "删除缓存是管理操作，本模块只做只读观测。"
+    },
+    keyPoints: ["需要登录", "不返回正文", "只读", "不需要事务", "不删除 Key"],
+    interviewTips: ["可以补一句：后续生产环境可进一步限制为 admin 或内网可访问。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/vo/cache.go"]
+  },
+  {
+    id: "v3-cache-observe-ttl-1",
+    moduleId: "module-v3-cache-observe",
+    type: "short",
+    title: "ttl_seconds 的 -2 和 -1 表示什么？",
+    prompt: "缓存观测接口返回 ttl_seconds。请解释 -2、-1 和正数分别表示什么。",
+    referenceAnswer: "`ttl_seconds = -2` 表示 Key 不存在；`ttl_seconds = -1` 表示 Key 存在但没有设置过期时间；正数表示 Key 还有多少秒过期。例如 rank:hot_posts 不设置 TTL，通常会表现为存在但没有过期时间。",
+    explanation: "这是 Redis TTL 命令的语义。理解它能帮助你判断缓存是未写入、已过期，还是本来就设计成不过期。",
+    keyPoints: ["-2 不存在", "-1 无过期", "正数剩余秒数", "Redis TTL"],
+    interviewTips: ["回答时可以结合具体 Key 举例：post:detail 有 TTL，rank:hot_posts 通常无 TTL。"],
+    codeRefs: ["backend/internal/service/cache_service.go"]
+  },
+  {
+    id: "v3-cache-observe-code-1",
+    moduleId: "module-v3-cache-observe",
+    type: "code",
+    title: "缓存观测接口的代码链路",
+    prompt: "请按代码链路解释一次 GET /api/v1/cache/posts/:id/status?page=1&page_size=10 请求发生了什么。",
+    referenceAnswer: "请求先经过 JWT 中间件，因为路由使用 RequireAuth。通过后进入 CacheController.PostStatus，Controller 解析 post id 和 page/page_size，再调用 CacheService.PostStatus。Service 根据 post id 组装 post:detail、post:view_count、post:comments 分页 Key，并读取 TTL、存在状态和浏览量增量；同时用 ZScore 检查 rank:hot_posts 中该帖子是否存在。最后返回 PostCacheStatus VO，统一响应包装为 { code, message, data }。",
+    explanation: "这道题训练你把中间件、Controller、Service、VO 和 Redis 命令串起来讲清楚。",
+    keyPoints: ["RequireAuth", "CacheController", "CacheService", "TTL", "GET", "ZScore", "PostCacheStatus"],
+    interviewTips: ["可以强调：这个接口不查 MySQL，也不返回缓存正文，只做 Redis 状态观测。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/cache_controller.go", "backend/internal/service/cache_service.go", "backend/internal/vo/cache.go"]
   }
 ];

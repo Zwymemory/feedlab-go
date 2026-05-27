@@ -24,6 +24,14 @@ func TestRankHotPostsKey(t *testing.T) {
 	}
 }
 
+func TestHotPostMember(t *testing.T) {
+	got := HotPostMember(42)
+	want := "42"
+	if got != want {
+		t.Fatalf("unexpected hot post member: got %q want %q", got, want)
+	}
+}
+
 func TestPostViewCountKey(t *testing.T) {
 	got := PostViewCountKey(42)
 	want := "post:view_count:42"

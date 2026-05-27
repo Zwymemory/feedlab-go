@@ -23,13 +23,17 @@ func NewHotPostCache(redis *redis.Client) *HotPostCache {
 	return &HotPostCache{redis: redis}
 }
 
+func HotPostMember(postID uint64) string {
+	return strconv.FormatUint(postID, 10)
+}
+
 func (c *HotPostCache) SetScore(ctx context.Context, postID uint64, score float64) error {
 	if c == nil || c.redis == nil {
 		return nil
 	}
 	return c.redis.ZAdd(ctx, RankHotPostsKey, redis.Z{
 		Score:  score,
-		Member: strconv.FormatUint(postID, 10),
+		Member: HotPostMember(postID),
 	}).Err()
 }
 
@@ -37,7 +41,7 @@ func (c *HotPostCache) Remove(ctx context.Context, postID uint64) error {
 	if c == nil || c.redis == nil {
 		return nil
 	}
-	return c.redis.ZRem(ctx, RankHotPostsKey, strconv.FormatUint(postID, 10)).Err()
+	return c.redis.ZRem(ctx, RankHotPostsKey, HotPostMember(postID)).Err()
 }
 
 func (c *HotPostCache) Top(ctx context.Context, limit int) ([]HotPostRank, error) {

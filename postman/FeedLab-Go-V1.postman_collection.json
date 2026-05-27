@@ -2367,6 +2367,97 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 19 - V3 Cache Observability",
+      "item": [
+        {
+          "name": "GET /api/v1/cache/posts/:id/status - inspect post cache",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cache/posts/{{post_id}}/status?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cache",
+                "posts",
+                "{{post_id}}",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "V3 缓存观测接口：需要登录。返回 post:detail、post:view_count、post:comments 分页 Key 和 rank:hot_posts 中该帖子的状态，不返回缓存正文。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/cache/posts/:id/status - unauthorized",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"cache status requires auth\", function () {",
+                  "  pm.response.to.have.status(401);",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.code).to.eql(40001);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cache/posts/{{post_id}}/status?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cache",
+                "posts",
+                "{{post_id}}",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "不带 Token 访问缓存观测接口应返回 401，避免公开暴露内部 Redis Key 状态。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

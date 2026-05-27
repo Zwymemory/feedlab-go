@@ -97,12 +97,24 @@ V3 完成后，如果你想把 Redis 缓存、排行榜、浏览量计数、限�
 
 这份文档会按 Redis Key、TTL、失效时机和代码调用链解释 V3，并提供适合面试表达的 30 秒和 1 分钟介绍模板。
 
+## V4 RabbitMQ 异步通知导读
+
+V4 完成后，如果你想理解 RabbitMQ 生产者、消费者、通知表、消费端幂等和验收演示方式，可以阅读：
+
+[FeedLab Go V4 RabbitMQ 异步通知导读](./docs/feedlab-v4-rabbitmq-notifications-guide.md)
+
+这份文档会按点赞通知链路讲解 `Controller -> Service -> Publisher -> RabbitMQ -> Consumer -> Repository` 的关系。
+
+[FeedLab Go V4 验收与演示脚本](./docs/feedlab-v4-acceptance-and-demo.md)
+
+这份文档用于录屏和面试展示，包含 RabbitMQ 管理台检查点、Postman 流程、curl 验收脚本和面试讲解模板。
+
 ## 本地启动
 
-1. 启动 MySQL 和 Redis：
+1. 启动 MySQL、Redis 和 RabbitMQ：
 
 ```bash
-docker compose up -d mysql redis
+docker compose up -d mysql redis rabbitmq
 ```
 
 2. 启动 API：

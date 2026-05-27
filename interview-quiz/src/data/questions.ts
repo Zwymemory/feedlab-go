@@ -140,6 +140,13 @@ export const modules: QuizModule[] = [
     subtitle: "Redis INCR、固定窗口、中间件",
     accent: "#991b1b",
     summary: "理解登录入口为什么需要限流，以及 Gin 中间件如何用 Redis 限制暴力尝试。"
+  },
+  {
+    id: "module-v3-review",
+    title: "V3 综合复盘",
+    subtitle: "Redis Key、TTL、失效策略、面试表达",
+    accent: "#111827",
+    summary: "把 V3 的缓存、排行榜、计数、限流、防穿透和观测能力串成一套能讲清楚的项目经验。"
   }
 ];
 
@@ -1658,5 +1665,72 @@ export const questions: Question[] = [
     keyPoints: ["router.New", "RateLimiter.Login", "ClientIP", "INCR", "EXPIRE", "42900"],
     interviewTips: ["可以强调：限流失败不应该进入密码校验，减少无效数据库压力。"],
     codeRefs: ["backend/internal/router/router.go", "backend/internal/middleware/rate_limit.go", "backend/internal/response/response.go"]
+  },
+  {
+    id: "v3-review-architecture-1",
+    moduleId: "module-v3-review",
+    type: "short",
+    title: "用 1 分钟介绍 FeedLab V3",
+    prompt: "如果面试官问：FeedLab V3 主要做了什么？请用自己的话回答。",
+    referenceAnswer: "FeedLab V3 主要围绕 Redis 做性能和稳定性增强。我给帖子详情、用户公开资料和评论列表做了 Cache Aside 缓存；用 Redis ZSet 做热门帖子排行榜；用 INCR 做浏览量增量计数和登录限流；用短 TTL 空值缓存防止不存在 ID 反复穿透 MySQL；还提供缓存观测接口，能查看 Key 是否存在、TTL、浏览量待落库增量和热门榜分数。MySQL 仍然是最终数据源，Redis 是缓存、临时计数和排序索引层。",
+    explanation: "这道题训练你从工程目标而不是文件列表来介绍 V3。面试官更想听你为什么这样设计。",
+    keyPoints: ["Cache Aside", "ZSet", "INCR", "空值缓存", "限流", "观测", "MySQL 最终数据源"],
+    interviewTips: ["先讲目标，再讲技术点，最后讲取舍。"],
+    codeRefs: ["docs/feedlab-v3-redis-cache-guide.md"]
+  },
+  {
+    id: "v3-review-key-classify-1",
+    moduleId: "module-v3-review",
+    type: "multiple",
+    title: "Redis Key 类型分类",
+    prompt: "下面哪些 Redis Key 与它的用途匹配？",
+    choices: [
+      { id: "A", text: "post:detail:{post_id}：帖子详情 VO 缓存" },
+      { id: "B", text: "rank:hot_posts：热门帖子 ZSet 排行榜" },
+      { id: "C", text: "post:view_count:{post_id}：浏览量待落库增量" },
+      { id: "D", text: "rate_limit:login:{ip}：登录限流计数" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "这些匹配都正确。V3 的 Redis Key 可以分成几类：对象缓存、列表缓存、ZSet 排行榜、计数器、空值缓存和限流 Key。",
+    explanation: "面试时能把 Key 分类，比零散背 Key 更能体现你理解了系统设计。",
+    keyPoints: ["对象缓存", "ZSet", "计数器", "限流", "分类思维"],
+    interviewTips: ["可以主动说：不同类型 Key 的 TTL 和失效策略也不同。"],
+    codeRefs: ["docs/feedlab-v3-redis-cache-guide.md", "backend/internal/cache"]
+  },
+  {
+    id: "v3-review-consistency-1",
+    moduleId: "module-v3-review",
+    type: "single",
+    title: "V3 缓存一致性的核心策略",
+    prompt: "FeedLab V3 多数缓存采用什么一致性策略？",
+    choices: [
+      { id: "A", text: "写 MySQL 成功后删除相关缓存，下次读再回源重建" },
+      { id: "B", text: "所有写操作只写 Redis，不写 MySQL" },
+      { id: "C", text: "缓存永不过期，也不删除" },
+      { id: "D", text: "Controller 直接更新所有 Redis Key" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "V3 多数缓存采用 Cache Aside 和写后删除策略。写操作先保证 MySQL 成功，再删除相关 Redis Key；下一次读请求未命中缓存时回源 MySQL 并重建缓存。",
+    explanation: "写后删除比写后更新更简单，也更不容易因为字段遗漏导致缓存对象不一致。",
+    whyOthersWrong: {
+      B: "MySQL 仍然是最终数据源。",
+      C: "多数对象缓存和列表缓存都有 TTL，并且写后会删除。",
+      D: "Controller 不应该直接操作 Redis。"
+    },
+    keyPoints: ["Cache Aside", "写后删除", "MySQL 成功", "回源重建", "最终一致"],
+    interviewTips: ["可以补一句：这是最终一致，不适合余额、库存等强一致场景直接照搬。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/service/comment_service.go", "backend/internal/service/user_service.go"]
+  },
+  {
+    id: "v3-review-tradeoff-1",
+    moduleId: "module-v3-review",
+    type: "code",
+    title: "V3 还有哪些可演进点？",
+    prompt: "如果面试官问：V3 已经用了 Redis，那后续还能怎么优化？请结合当前代码回答。",
+    referenceAnswer: "热门榜可以加入时间衰减、浏览量权重或定时重算；评论列表缓存现在用 SCAN 删除分页 Key，后续可以改成版本号 Key；浏览量目前由请求触发阈值落库，后续可以用定时任务或异步 Worker；登录限流现在按 IP 固定窗口，后续可以做 IP + email、滑动窗口或验证码；空值缓存当前是短 TTL 哨兵值，如果恶意 ID 规模很大，可以再考虑布隆过滤器。",
+    explanation: "好的项目介绍不只说已经做了什么，也能说明当前取舍和下一步演进。",
+    keyPoints: ["时间衰减", "版本号 Key", "异步 Worker", "滑动窗口", "布隆过滤器"],
+    interviewTips: ["不要说当前方案完美。能说出边界和演进方向，反而更像真实工程经验。"],
+    codeRefs: ["docs/feedlab-v3-redis-cache-guide.md"]
   }
 ];

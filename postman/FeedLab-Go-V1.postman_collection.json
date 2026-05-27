@@ -2617,6 +2617,67 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Module 22 - V3 Redis Review",
+      "item": [
+        {
+          "name": "V3 review checklist",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/healthz",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "healthz"
+              ]
+            },
+            "description": "V3 收尾验收入口。建议按 README 和 docs/feedlab-v3-redis-cache-guide.md 依次验证：帖子详情缓存、用户缓存、热门榜、Feed 游标、浏览量计数、评论列表缓存、缓存观测、空值缓存、登录限流。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/cache/posts/:id/status - final observability check",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/cache/posts/{{post_id}}/status?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "cache",
+                "posts",
+                "{{post_id}}",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "V3 最终推荐展示接口：它能一次性展示帖子详情缓存、空值缓存、浏览量增量、评论分页缓存和热门榜状态。"
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

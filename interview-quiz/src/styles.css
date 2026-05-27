@@ -103,6 +103,11 @@ button {
   top: 18px;
   display: grid;
   gap: 12px;
+  align-self: start;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
 }
 
 .nav-title,
@@ -130,12 +135,82 @@ button {
   font-size: 18px;
 }
 
+.module-group,
 .module-button {
   --accent: #2f7dff;
+}
+
+.module-group {
+  display: grid;
+  gap: 8px;
+}
+
+.module-group-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 22px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  text-align: left;
+  color: #17202a;
+  border: 1px solid rgba(38, 54, 76, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 14px 34px rgba(37, 52, 72, 0.07);
+}
+
+.module-group-toggle strong,
+.module-group-toggle small,
+.module-group-meta {
+  display: block;
+}
+
+.module-group-toggle strong {
+  font-size: 15px;
+}
+
+.module-group-toggle small {
+  margin-top: 4px;
+  color: #6b7a8d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.module-group-meta {
+  min-width: 54px;
+  color: #536276;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.module-group-meta span {
+  margin-top: 4px;
+  color: #7a8797;
+}
+
+.module-group-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: #ffffff;
+  border-radius: 50%;
+  background: #17202a;
+  font-weight: 900;
+}
+
+.module-group-list {
+  display: grid;
+  gap: 8px;
+}
+
+.module-button {
   width: 100%;
   display: grid;
   gap: 8px;
-  padding: 16px;
+  padding: 14px;
   text-align: left;
   color: inherit;
   border-left: 5px solid transparent;
@@ -155,7 +230,7 @@ button {
 }
 
 .module-name {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
 }
 
@@ -379,7 +454,10 @@ button {
   display: grid;
   gap: 18px;
   padding: 20px;
-  overflow: hidden;
+  align-self: start;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  scrollbar-width: thin;
 }
 
 .panel-section {
@@ -487,6 +565,13 @@ button {
 
   .module-nav {
     position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .learning-panel {
+    max-height: none;
+    overflow: visible;
   }
 
   .progress-summary {

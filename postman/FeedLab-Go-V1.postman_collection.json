@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "FeedLab Go V1 + V2",
-    "description": "FeedLab Postman 测试流程。按模块顺序执行：健康检查 -> 注册 -> 登录 -> 当前用户 -> 发布帖子 -> 点赞 -> 收藏 -> 关注 -> 评论 -> 评论点赞 -> 公开主页 -> 删除 -> Swagger 文档 -> V2 最终验收。",
+    "name": "FeedLab Go V1 + V2 + V3 + V4",
+    "description": "FeedLab Postman 测试流程。V4 新增 RabbitMQ 异步通知：互动接口生产消息，notification worker 消费消息并写入 notifications 表。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -55,6 +55,14 @@
     },
     {
       "key": "like_comment_id",
+      "value": ""
+    },
+    {
+      "key": "target_access_token",
+      "value": ""
+    },
+    {
+      "key": "notification_id",
       "value": ""
     }
   ],
@@ -2674,6 +2682,307 @@
               ]
             },
             "description": "V3 最终推荐展示接口：它能一次性展示帖子详情缓存、空值缓存、浏览量增量、评论分页缓存和热门榜状态。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 23 - V4 RabbitMQ Notifications",
+      "item": [
+        {
+          "name": "POST /api/v1/auth/login - target user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "登录目标用户，保存 target_access_token，用它模拟“别人”对当前用户的帖子进行点赞/评论。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{target_email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.access_token) {",
+                  "  pm.collectionVariables.set('target_access_token', json.data.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/v1/posts/:id/like - target user creates notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{target_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/like",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "like"
+              ]
+            },
+            "description": "目标用户点赞当前用户帖子。接口仍然同步返回点赞结果，同时后端向 RabbitMQ 投递 post_like 通知消息。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts/:id/comments - target user creates notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{target_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{post_id}}/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{post_id}}",
+                "comments"
+              ]
+            },
+            "description": "目标用户评论当前用户帖子。后端投递 comment 通知消息，worker 消费后写入当前用户通知箱。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"V4 notification comment from target user\",\n  \"parent_id\": 0\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/users/:id/follow - creates target notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/users/{{target_user_id}}/follow",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "users",
+                "{{target_user_id}}",
+                "follow"
+              ]
+            },
+            "description": "当前用户关注目标用户。后端投递 follow 通知消息，worker 消费后写入目标用户通知箱。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/notifications - current user inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查询当前用户通知列表。预期能看到 target 用户产生的 post_like/comment 通知。Test 脚本保存第一条 notification_id。"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.items && json.data.items.length > 0) {",
+                  "  pm.collectionVariables.set('notification_id', json.data.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/notifications/unread-count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/unread-count",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "unread-count"
+              ]
+            },
+            "description": "查询当前用户未读通知数量。预期 unread_count >= 1。"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /api/v1/notifications/:id/read",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/{{notification_id}}/read",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "{{notification_id}}",
+                "read"
+              ]
+            },
+            "description": "把一条通知标记为已读。预期 data.read=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "PATCH /api/v1/notifications/read-all",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications/read-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications",
+                "read-all"
+              ]
+            },
+            "description": "把当前用户所有通知标记为已读。预期 data.read=true。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/notifications - target user inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{target_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/notifications?page=1&page_size=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "查询目标用户通知列表。预期能看到当前用户关注目标用户产生的 follow 通知。"
           },
           "response": []
         }

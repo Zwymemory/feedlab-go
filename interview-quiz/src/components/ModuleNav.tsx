@@ -18,6 +18,9 @@ type ModuleGroup = {
 };
 
 function groupIdForModule(module: QuizModule): string {
+  if (module.id.startsWith("module-v4")) {
+    return "v4";
+  }
   if (module.id.startsWith("module-v3")) {
     return "v3";
   }
@@ -31,7 +34,8 @@ function groupModules(modules: QuizModule[]): ModuleGroup[] {
   const groups: ModuleGroup[] = [
     { id: "v1", title: "V1 基础闭环", description: "配置、认证、帖子、Swagger", modules: [] },
     { id: "v2", title: "V2 互动系统", description: "点赞、评论、收藏、关注", modules: [] },
-    { id: "v3", title: "V3 Redis 与 Feed", description: "缓存、排行、限流、观测", modules: [] }
+    { id: "v3", title: "V3 Redis 与 Feed", description: "缓存、排行、限流、观测", modules: [] },
+    { id: "v4", title: "V4 异步通知", description: "RabbitMQ、通知收件箱、幂等消费", modules: [] }
   ];
   for (const module of modules) {
     const group = groups.find((item) => item.id === groupIdForModule(module));

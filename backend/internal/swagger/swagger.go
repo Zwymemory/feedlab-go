@@ -48,6 +48,7 @@ func spec() gin.H {
 			{"name": "comments", "description": "Post comments and replies"},
 			{"name": "comment_likes", "description": "Comment like interactions"},
 			{"name": "cache", "description": "Redis cache inspection APIs"},
+			{"name": "notifications", "description": "RabbitMQ-backed notification inbox APIs"},
 		},
 		"components": gin.H{
 			"securitySchemes": gin.H{
@@ -250,6 +251,22 @@ func paths() gin.H {
 		"/api/v1/comments/{id}": gin.H{
 			"delete": operationWithID("comments", "Delete comment", "Soft delete a comment. Deleting a root comment also soft deletes its visible replies.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "403", "permission denied", "404", "not found")),
 		},
+		"/api/v1/notifications": gin.H{
+			"get": operationWithParameters("notifications", "List notifications", "List the current user's notifications produced asynchronously from RabbitMQ events.", bearerSecurity(), responseMap("200", "success", "400", "invalid query", "401", "invalid token"), []gin.H{
+				queryParameter("page", "Page number, starting from 1.", 1, 1, 0),
+				queryParameter("page_size", "Page size, default 10, max 50.", 10, 1, 50),
+				boolQueryParameter("unread_only", "Return only unread notifications."),
+			}),
+		},
+		"/api/v1/notifications/unread-count": gin.H{
+			"get": operation("notifications", "Unread notification count", "Return unread notification count for the current user.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
+		},
+		"/api/v1/notifications/read-all": gin.H{
+			"patch": operation("notifications", "Mark all notifications read", "Mark all current user notifications as read.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
+		},
+		"/api/v1/notifications/{id}/read": gin.H{
+			"patch": operationWithID("notifications", "Mark notification read", "Mark one current user notification as read.", bearerSecurity(), responseMap("200", "success", "401", "invalid token", "404", "not found")),
+		},
 	}
 }
 
@@ -337,6 +354,19 @@ func stringQueryParameter(name string, description string) gin.H {
 		"description": description,
 		"schema": gin.H{
 			"type": "string",
+		},
+	}
+}
+
+func boolQueryParameter(name string, description string) gin.H {
+	return gin.H{
+		"name":        name,
+		"in":          "query",
+		"required":    false,
+		"description": description,
+		"schema": gin.H{
+			"type":    "boolean",
+			"example": true,
 		},
 	}
 }

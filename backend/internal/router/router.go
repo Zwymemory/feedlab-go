@@ -7,22 +7,26 @@ import (
 	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/config"
 	"feedlab/backend/internal/controller"
+	"feedlab/backend/internal/event"
 	"feedlab/backend/internal/middleware"
+	"feedlab/backend/internal/mq"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/service"
 	"feedlab/backend/internal/swagger"
 	feedjwt "feedlab/backend/pkg/jwt"
 
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type Dependencies struct {
-	Config *config.Config
-	Logger *slog.Logger
-	MySQL  *gorm.DB
-	Redis  *redis.Client
+	Config   *config.Config
+	Logger   *slog.Logger
+	MySQL    *gorm.DB
+	Redis    *redis.Client
+	RabbitMQ *amqp.Connection
 }
 
 func New(deps Dependencies) *gin.Engine {
@@ -31,10 +35,14 @@ func New(deps Dependencies) *gin.Engine {
 	engine.Use(gin.Recovery())
 	engine.Use(requestLogger(deps.Logger))
 
-	healthService := service.NewHealthService(deps.MySQL, deps.Redis)
+	healthService := service.NewHealthService(deps.MySQL, deps.Redis, deps.RabbitMQ)
 	healthController := controller.NewHealthController(healthService)
 	cacheService := service.NewCacheService(deps.Redis)
 	cacheController := controller.NewCacheController(cacheService)
+	var notificationPublisher event.NotificationPublisher = event.NoopNotificationPublisher{}
+	if deps.RabbitMQ != nil {
+		notificationPublisher = mq.NewNotificationPublisher(deps.RabbitMQ, deps.Config.RabbitMQ.NotificationQueue, deps.Logger)
+	}
 
 	tokenManager, err := feedjwt.NewManager(
 		deps.Config.JWT.Secret,
@@ -52,6 +60,7 @@ func New(deps Dependencies) *gin.Engine {
 	userFollowRepository := repository.NewUserFollowRepository(deps.MySQL)
 	commentRepository := repository.NewCommentRepository(deps.MySQL)
 	commentLikeRepository := repository.NewCommentLikeRepository(deps.MySQL)
+	notificationRepository := repository.NewNotificationRepository(deps.MySQL)
 	nullCacheTTL := time.Duration(deps.Config.Redis.NullCacheTTLSeconds) * time.Second
 	postCache := cache.NewPostCache(deps.Redis, time.Duration(deps.Config.Redis.PostDetailTTLSeconds)*time.Second, nullCacheTTL)
 	userCache := cache.NewUserCache(deps.Redis, time.Duration(deps.Config.Redis.UserProfileTTLSeconds)*time.Second, nullCacheTTL)
@@ -61,11 +70,12 @@ func New(deps Dependencies) *gin.Engine {
 	authService := service.NewAuthService(userRepository, tokenManager)
 	userService := service.NewUserService(userRepository, userCache)
 	postService := service.NewPostService(postRepository, userRepository, postCache, userCache, hotPostCache, postViewCache, int64(deps.Config.Redis.PostViewFlushThreshold))
-	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository, postCache, hotPostCache)
-	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository, postCache, hotPostCache)
-	followService := service.NewFollowService(userFollowRepository, userRepository, userCache)
-	commentService := service.NewCommentService(commentRepository, postRepository, postCache, commentCache, hotPostCache)
-	commentLikeService := service.NewCommentLikeService(commentLikeRepository, commentRepository, commentCache)
+	notificationService := service.NewNotificationService(notificationRepository, userRepository)
+	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository, postCache, hotPostCache, notificationPublisher)
+	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository, postCache, hotPostCache, notificationPublisher)
+	followService := service.NewFollowService(userFollowRepository, userRepository, userCache, notificationPublisher)
+	commentService := service.NewCommentService(commentRepository, postRepository, postCache, commentCache, hotPostCache, notificationPublisher)
+	commentLikeService := service.NewCommentLikeService(commentLikeRepository, commentRepository, commentCache, notificationPublisher)
 	authController := controller.NewAuthController(authService)
 	postController := controller.NewPostController(postService)
 	userController := controller.NewUserController(userService, postService)
@@ -74,6 +84,7 @@ func New(deps Dependencies) *gin.Engine {
 	followController := controller.NewFollowController(followService)
 	commentController := controller.NewCommentController(commentService)
 	commentLikeController := controller.NewCommentLikeController(commentLikeService)
+	notificationController := controller.NewNotificationController(notificationService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 	loginRateLimiter := middleware.NewRateLimiter(
 		deps.Redis,
@@ -128,6 +139,13 @@ func New(deps Dependencies) *gin.Engine {
 	comments.DELETE("/:id/like", authMiddleware.RequireAuth(), commentLikeController.UnlikeComment)
 	comments.GET("/:id/liked", authMiddleware.RequireAuth(), commentLikeController.IsCommentLiked)
 	comments.DELETE("/:id", authMiddleware.RequireAuth(), commentController.Delete)
+
+	notifications := api.Group("/notifications")
+	notifications.Use(authMiddleware.RequireAuth())
+	notifications.GET("", notificationController.List)
+	notifications.GET("/unread-count", notificationController.UnreadCount)
+	notifications.PATCH("/read-all", notificationController.MarkAllRead)
+	notifications.PATCH("/:id/read", notificationController.MarkRead)
 
 	return engine
 }

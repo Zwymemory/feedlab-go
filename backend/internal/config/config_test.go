@@ -64,4 +64,10 @@ jwt:
 	if cfg.Redis.NullCacheTTLSeconds != 60 {
 		t.Fatalf("expected default null cache ttl seconds, got %d", cfg.Redis.NullCacheTTLSeconds)
 	}
+	if cfg.RabbitMQ.URL != "amqp://feedlab:feedlab_pass@127.0.0.1:5672/" {
+		t.Fatalf("expected default rabbitmq url, got %s", cfg.RabbitMQ.URL)
+	}
+	if cfg.RabbitMQ.NotificationQueue != "notification.queue" {
+		t.Fatalf("expected default notification queue, got %s", cfg.RabbitMQ.NotificationQueue)
+	}
 }

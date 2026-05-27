@@ -6,6 +6,7 @@ import (
 
 	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
+	"feedlab/backend/internal/event"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
 
@@ -16,10 +17,11 @@ type FollowService struct {
 	follows   *repository.UserFollowRepository
 	users     *repository.UserRepository
 	userCache *cache.UserCache
+	publisher event.NotificationPublisher
 }
 
-func NewFollowService(follows *repository.UserFollowRepository, users *repository.UserRepository, userCache *cache.UserCache) *FollowService {
-	return &FollowService{follows: follows, users: users, userCache: userCache}
+func NewFollowService(follows *repository.UserFollowRepository, users *repository.UserRepository, userCache *cache.UserCache, publisher event.NotificationPublisher) *FollowService {
+	return &FollowService{follows: follows, users: users, userCache: userCache, publisher: publisher}
 }
 
 func (s *FollowService) Follow(ctx context.Context, currentUserID uint64, targetUserID uint64) (*vo.FollowStatus, error) {
@@ -30,15 +32,17 @@ func (s *FollowService) Follow(ctx context.Context, currentUserID uint64, target
 		return nil, err
 	}
 
+	var created bool
 	err := s.follows.Transaction(ctx, func(tx *gorm.DB) error {
 		txFollows := s.follows.WithTx(tx)
 		txUsers := s.users.WithTx(tx)
 
-		created, err := txFollows.Follow(ctx, currentUserID, targetUserID)
+		inserted, err := txFollows.Follow(ctx, currentUserID, targetUserID)
 		if err != nil {
 			return err
 		}
-		if !created {
+		created = inserted
+		if !inserted {
 			return nil
 		}
 		if err := txUsers.IncrementFollowingCount(ctx, currentUserID, 1); err != nil {
@@ -53,6 +57,9 @@ func (s *FollowService) Follow(ctx context.Context, currentUserID uint64, target
 		return nil, err
 	}
 	s.deleteChangedUserProfileCaches(ctx, currentUserID, targetUserID)
+	if created {
+		publishNotification(ctx, s.publisher, followEvent(targetUserID, currentUserID))
+	}
 	return s.followStatus(ctx, targetUserID, true)
 }
 

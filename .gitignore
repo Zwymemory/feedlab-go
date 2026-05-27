@@ -3,6 +3,7 @@
 # Go
 bin/
 coverage.out
+.cache/
 
 # Local config overrides
 *.local.yaml

@@ -1,6 +1,6 @@
 # FeedLab Go
 
-FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按小模块迭代，V1 基础业务闭环和 V2 互动系统均已完成，V3 正在引入 Redis 缓存和 Feed 优化：
+FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按小模块迭代，V1 基础业务闭环、V2 互动系统、V3 Redis 缓存和 Feed 优化、V4 RabbitMQ 异步通知均已完成：
 
 - 模块 1：项目初始化、配置读取、MySQL/Redis 连接、统一响应和健康检查。
 - 模块 2：用户注册、用户登录、JWT 鉴权和当前用户信息。
@@ -23,6 +23,8 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 - V3 模块 8：Redis 空值缓存防穿透。
 - V3 模块 9：Redis 登录限流。
 - V3 收尾：Redis 与缓存系统代码导读。
+- V4 模块 1：RabbitMQ 通知队列、通知事件生产者和通知 Worker。
+- V4 模块 2：通知列表、未读数、单条已读和全部已读。
 
 ## 为什么这样设计
 
@@ -32,7 +34,7 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 - 使用统一响应 `{ code, message, data }`，让前端、Postman 和后续接口都遵循同一套返回格式。
 - 密码只保存 bcrypt 哈希，不保存明文；登录成功后签发 JWT，后续需要登录的接口统一经过 JWT 中间件。
 - Redis 当前已用于帖子详情缓存、用户公开资料缓存、热门排行榜和浏览量增量计数；V2 互动模块仍使用 MySQL 事务维护关系和核心计数。
-- 当前暂不接 RabbitMQ，因此没有队列、生产者、消费者和消息格式；点赞、评论、评论点赞、收藏、关注等通知异步化留到 V4。
+- V4 已接入 RabbitMQ：点赞、收藏、评论、评论点赞、关注会异步生产通知消息，由 Worker 消费后写入 `notifications` 表。
 
 ## 当前项目结构
 
@@ -44,10 +46,11 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 │   ├── internal/
 │   │   ├── config/       配置读取
 │   │   ├── controller/   HTTP 入参和响应
-│   │   ├── db/           MySQL、Redis、AutoMigrate
+│   │   ├── db/           MySQL、Redis、RabbitMQ、AutoMigrate
 │   │   ├── dto/          请求结构
 │   │   ├── middleware/   JWT 鉴权
 │   │   ├── model/        GORM 模型
+│   │   ├── mq/           RabbitMQ 生产者和消费者
 │   │   ├── repository/   数据访问
 │   │   ├── response/     统一响应
 │   │   ├── router/       路由装配
@@ -1426,7 +1429,104 @@ V3 已经覆盖了内容社区后端常见的 Redis 能力：
 
 ## RabbitMQ 队列说明
 
-当前不接 RabbitMQ，因此没有队列、生产者、消费者和消息格式。V2 点赞、评论、评论点赞、收藏和关注成功后暂不发送通知；V4 再设计 `notification.queue`，由点赞、评论、评论点赞、收藏、关注接口生产通知消息，Worker 消费后写入 `notifications` 表。
+V4 已接入 RabbitMQ，用于把互动行为异步转成站内通知。主业务接口先完成 MySQL 事务，再投递通知消息；Worker 消费消息并写入 `notifications` 表。
+
+| 队列 | 生产者 | 消费者 | 消息格式 | 过期策略/持久化 | 幂等策略 |
+|---|---|---|---|---|---|
+| `notification.queue` | 点赞、收藏、评论、回复、评论点赞、关注 Service | API 进程内 notification worker | JSON `NotificationEvent` | durable queue + persistent message；V4 不设置消息 TTL | `notifications.message_id` 唯一索引 |
+
+消息示例：
+
+```json
+{
+  "message_id": "post_like:7:6",
+  "type": "post_like",
+  "recipient_id": 1,
+  "actor_id": 6,
+  "subject_type": "post",
+  "subject_id": 7,
+  "post_id": 7,
+  "comment_id": 0,
+  "content": "FeedLab 第一篇帖子"
+}
+```
+
+### 为什么这样设计
+
+- 通知不是点赞/评论/关注的强依赖，异步化后主接口不会被通知写入拖慢。
+- RabbitMQ 消息使用持久化投递，服务短暂重启时消息不会轻易丢失。
+- 消费端通过 `message_id` 唯一索引保证幂等，即使同一条消息重复投递，也不会重复插入通知。
+- 自己触发自己的互动不会产生通知，例如自己点赞自己的帖子。
+
+### notifications 表说明
+
+| 字段 | 含义 |
+|---|---|
+| id | 通知主键，自增 ID |
+| user_id | 接收通知的用户 ID |
+| actor_id | 触发通知的用户 ID |
+| type | 通知类型，如 `post_like`、`post_collect`、`comment`、`reply`、`comment_like`、`follow` |
+| subject_type | 通知主体类型，如 `post`、`comment`、`user` |
+| subject_id | 通知主体 ID |
+| post_id | 关联帖子 ID，没有则为 0 |
+| comment_id | 关联评论 ID，没有则为 0 |
+| content | 通知摘要 |
+| is_read | 是否已读 |
+| message_id | 消息唯一 ID，用于消费端幂等 |
+| read_at | 已读时间 |
+| created_at | 创建时间 |
+| updated_at | 更新时间 |
+| deleted_at | 软删除时间，V4 暂不暴露删除通知接口 |
+
+### V4 接口
+
+| 接口 | 登录 | 用途 |
+|---|---|---|
+| `GET /api/v1/notifications?page=1&page_size=10&unread_only=false` | 是 | 查询当前用户通知列表 |
+| `GET /api/v1/notifications/unread-count` | 是 | 查询未读通知数 |
+| `PATCH /api/v1/notifications/:id/read` | 是 | 标记单条通知已读 |
+| `PATCH /api/v1/notifications/read-all` | 是 | 标记全部通知已读 |
+
+### V4 测试流程
+
+启动依赖：
+
+```bash
+docker compose up -d mysql redis rabbitmq
+```
+
+RabbitMQ 管理页面：
+
+```text
+http://localhost:15672
+feedlab / feedlab_pass
+```
+
+启动 API：
+
+```bash
+cd /Users/zwy/Documents/Build_My_Vps-Go/backend
+go run ./cmd/api
+```
+
+健康检查：
+
+```bash
+curl http://localhost:8080/healthz
+```
+
+预期 `rabbitmq = ok`。
+
+Postman 中执行 `Module 23 - V4 RabbitMQ Notifications`：
+
+1. 登录目标用户，保存 `target_access_token`。
+2. 目标用户点赞当前用户帖子，产生 `post_like` 通知。
+3. 目标用户评论当前用户帖子，产生 `comment` 通知。
+4. 当前用户查询通知列表，保存 `notification_id`。
+5. 当前用户查询未读数。
+6. 当前用户标记单条通知已读。
+7. 当前用户标记全部通知已读。
+8. 当前用户关注目标用户，目标用户查询通知列表，看到 `follow` 通知。
 
 ## 面试题练习项目
 
@@ -1455,6 +1555,8 @@ V3 已经覆盖了内容社区后端常见的 Redis 能力：
 - V3 模块 8：Redis 空值缓存防穿透
 - V3 模块 9：Redis 登录限流
 - V3 综合复盘：Redis Key、TTL、失效策略、代码链路和面试表达
+- V4 模块 1：RabbitMQ 异步通知
+- V4 模块 2：通知表、未读数和消费端幂等
 
 每道题都会提供答案和解析：
 

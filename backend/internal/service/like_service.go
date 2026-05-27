@@ -6,6 +6,7 @@ import (
 
 	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
+	"feedlab/backend/internal/event"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
 
@@ -18,29 +19,33 @@ type LikeService struct {
 	users     *repository.UserRepository
 	postCache *cache.PostCache
 	hotPosts  *cache.HotPostCache
+	publisher event.NotificationPublisher
 }
 
-func NewLikeService(likes *repository.PostLikeRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache) *LikeService {
-	return &LikeService{likes: likes, posts: posts, users: users, postCache: postCache, hotPosts: hotPosts}
+func NewLikeService(likes *repository.PostLikeRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache, publisher event.NotificationPublisher) *LikeService {
+	return &LikeService{likes: likes, posts: posts, users: users, postCache: postCache, hotPosts: hotPosts, publisher: publisher}
 }
 
 func (s *LikeService) LikePost(ctx context.Context, postID uint64, userID uint64) (*vo.LikeStatus, error) {
-	if _, err := s.posts.FindPublishedByID(ctx, postID); err != nil {
+	post, err := s.posts.FindPublishedByID(ctx, postID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 
-	err := s.likes.Transaction(ctx, func(tx *gorm.DB) error {
+	var created bool
+	err = s.likes.Transaction(ctx, func(tx *gorm.DB) error {
 		txLikes := s.likes.WithTx(tx)
 		txPosts := s.posts.WithTx(tx)
 
-		created, err := txLikes.Like(ctx, postID, userID)
+		inserted, err := txLikes.Like(ctx, postID, userID)
 		if err != nil {
 			return err
 		}
-		if created {
+		created = inserted
+		if inserted {
 			return txPosts.IncrementLikeCount(ctx, postID, 1)
 		}
 		return nil
@@ -50,6 +55,9 @@ func (s *LikeService) LikePost(ctx context.Context, postID uint64, userID uint64
 	}
 	_ = s.postCache.Delete(ctx, postID)
 	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
+	if created {
+		publishNotification(ctx, s.publisher, postInteractionEvent(event.NotificationTypePostLike, *post, userID))
+	}
 
 	likeCount, err := s.posts.GetPublishedLikeCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {

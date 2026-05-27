@@ -7,6 +7,7 @@ import (
 
 	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
+	"feedlab/backend/internal/event"
 	"feedlab/backend/internal/model"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
@@ -20,10 +21,11 @@ type CommentService struct {
 	postCache    *cache.PostCache
 	commentCache *cache.CommentCache
 	hotPosts     *cache.HotPostCache
+	publisher    event.NotificationPublisher
 }
 
-func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache, commentCache *cache.CommentCache, hotPosts *cache.HotPostCache) *CommentService {
-	return &CommentService{comments: comments, posts: posts, postCache: postCache, commentCache: commentCache, hotPosts: hotPosts}
+func NewCommentService(comments *repository.CommentRepository, posts *repository.PostRepository, postCache *cache.PostCache, commentCache *cache.CommentCache, hotPosts *cache.HotPostCache, publisher event.NotificationPublisher) *CommentService {
+	return &CommentService{comments: comments, posts: posts, postCache: postCache, commentCache: commentCache, hotPosts: hotPosts, publisher: publisher}
 }
 
 func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint64, req dto.CreateCommentRequest) (*vo.Comment, error) {
@@ -32,7 +34,8 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 		return nil, ErrBadRequest
 	}
 
-	if _, err := s.posts.FindPublishedByID(ctx, postID); err != nil {
+	post, err := s.posts.FindPublishedByID(ctx, postID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
@@ -46,6 +49,8 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 		Content:  content,
 		Status:   "published",
 	}
+	recipientID := post.UserID
+	notificationType := event.NotificationTypeComment
 	if req.ParentID > 0 {
 		parent, err := s.comments.FindByID(ctx, req.ParentID)
 		if errors.Is(err, repository.ErrNotFound) {
@@ -58,9 +63,11 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 			return nil, ErrBadRequest
 		}
 		comment.ReplyToUserID = parent.UserID
+		recipientID = parent.UserID
+		notificationType = event.NotificationTypeReply
 	}
 
-	err := s.comments.Transaction(ctx, func(tx *gorm.DB) error {
+	err = s.comments.Transaction(ctx, func(tx *gorm.DB) error {
 		txComments := s.comments.WithTx(tx)
 		txPosts := s.posts.WithTx(tx)
 		if err := txComments.Create(ctx, &comment); err != nil {
@@ -80,6 +87,7 @@ func (s *CommentService) Create(ctx context.Context, postID uint64, userID uint6
 		return nil, err
 	}
 	result := vo.NewComment(*created)
+	publishNotification(ctx, s.publisher, commentEvent(notificationType, recipientID, userID, postID, created.ID, content))
 	return &result, nil
 }
 

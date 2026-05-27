@@ -25,6 +25,11 @@ redis:
   comment_list_ttl_seconds: 120
   null_cache_ttl_seconds: 60
 
+rabbitmq:
+  enabled: true
+  url: "amqp://feedlab:feedlab_pass@127.0.0.1:5672/"
+  notification_queue: "notification.queue"
+
 jwt:
   secret: "feedlab_v1_change_me"
   issuer: "feedlab"

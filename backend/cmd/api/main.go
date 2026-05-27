@@ -11,7 +11,10 @@ import (
 	"feedlab/backend/internal/config"
 	"feedlab/backend/internal/db"
 	"feedlab/backend/internal/logger"
+	"feedlab/backend/internal/mq"
+	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/router"
+	"feedlab/backend/internal/service"
 )
 
 // @title FeedLab API
@@ -27,7 +30,8 @@ func main() {
 	}
 
 	log := logger.New(cfg.Log)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	mysqlDB, err := db.NewMySQL(cfg.MySQL)
 	if err != nil {
@@ -46,11 +50,31 @@ func main() {
 	}
 	defer redisClient.Close()
 
+	rabbitConn, err := db.NewRabbitMQ(cfg.RabbitMQ)
+	if err != nil {
+		log.Error("connect rabbitmq failed", "error", err)
+		os.Exit(1)
+	}
+	if rabbitConn != nil {
+		defer rabbitConn.Close()
+		notificationService := service.NewNotificationService(
+			repository.NewNotificationRepository(mysqlDB),
+			repository.NewUserRepository(mysqlDB),
+		)
+		consumer := mq.NewNotificationConsumer(rabbitConn, cfg.RabbitMQ.NotificationQueue, notificationService, log)
+		if err := consumer.Start(ctx); err != nil {
+			log.Error("start notification consumer failed", "error", err)
+			os.Exit(1)
+		}
+		log.Info("notification consumer started", "queue", cfg.RabbitMQ.NotificationQueue)
+	}
+
 	engine := router.New(router.Dependencies{
-		Config: cfg,
-		Logger: log,
-		MySQL:  mysqlDB,
-		Redis:  redisClient,
+		Config:   cfg,
+		Logger:   log,
+		MySQL:    mysqlDB,
+		Redis:    redisClient,
+		RabbitMQ: rabbitConn,
 	})
 
 	go func() {
@@ -64,6 +88,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	cancel()
 
 	log.Info("feedlab api shutting down")
 	time.Sleep(300 * time.Millisecond)

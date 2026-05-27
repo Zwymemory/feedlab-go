@@ -6,6 +6,7 @@ import (
 
 	"feedlab/backend/internal/cache"
 	"feedlab/backend/internal/dto"
+	"feedlab/backend/internal/event"
 	"feedlab/backend/internal/repository"
 	"feedlab/backend/internal/vo"
 
@@ -18,29 +19,33 @@ type CollectService struct {
 	users     *repository.UserRepository
 	postCache *cache.PostCache
 	hotPosts  *cache.HotPostCache
+	publisher event.NotificationPublisher
 }
 
-func NewCollectService(collects *repository.PostCollectRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache) *CollectService {
-	return &CollectService{collects: collects, posts: posts, users: users, postCache: postCache, hotPosts: hotPosts}
+func NewCollectService(collects *repository.PostCollectRepository, posts *repository.PostRepository, users *repository.UserRepository, postCache *cache.PostCache, hotPosts *cache.HotPostCache, publisher event.NotificationPublisher) *CollectService {
+	return &CollectService{collects: collects, posts: posts, users: users, postCache: postCache, hotPosts: hotPosts, publisher: publisher}
 }
 
 func (s *CollectService) CollectPost(ctx context.Context, postID uint64, userID uint64) (*vo.CollectStatus, error) {
-	if _, err := s.posts.FindPublishedByID(ctx, postID); err != nil {
+	post, err := s.posts.FindPublishedByID(ctx, postID)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
 
-	err := s.collects.Transaction(ctx, func(tx *gorm.DB) error {
+	var created bool
+	err = s.collects.Transaction(ctx, func(tx *gorm.DB) error {
 		txCollects := s.collects.WithTx(tx)
 		txPosts := s.posts.WithTx(tx)
 
-		created, err := txCollects.Collect(ctx, postID, userID)
+		inserted, err := txCollects.Collect(ctx, postID, userID)
 		if err != nil {
 			return err
 		}
-		if created {
+		created = inserted
+		if inserted {
 			return txPosts.IncrementCollectCount(ctx, postID, 1)
 		}
 		return nil
@@ -50,6 +55,9 @@ func (s *CollectService) CollectPost(ctx context.Context, postID uint64, userID 
 	}
 	_ = s.postCache.Delete(ctx, postID)
 	refreshHotPostScore(ctx, s.posts, s.hotPosts, postID)
+	if created {
+		publishNotification(ctx, s.publisher, postInteractionEvent(event.NotificationTypePostCollect, *post, userID))
+	}
 
 	collectCount, err := s.posts.GetPublishedCollectCount(ctx, postID)
 	if errors.Is(err, repository.ErrNotFound) {

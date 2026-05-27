@@ -19,7 +19,7 @@ func NewHealthController(healthService *service.HealthService) *HealthController
 
 // Health godoc
 // @Summary Health check
-// @Description Check API, MySQL and Redis availability.
+// @Description Check API, MySQL, Redis and RabbitMQ availability.
 // @Tags health
 // @Produce json
 // @Success 200 {object} response.Body

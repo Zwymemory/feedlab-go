@@ -13,6 +13,7 @@ type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	MySQL     MySQLConfig     `yaml:"mysql"`
 	Redis     RedisConfig     `yaml:"redis"`
+	RabbitMQ  RabbitMQConfig  `yaml:"rabbitmq"`
 	JWT       JWTConfig       `yaml:"jwt"`
 	RateLimit RateLimitConfig `yaml:"rate_limit"`
 	Log       LogConfig       `yaml:"log"`
@@ -46,6 +47,12 @@ type RedisConfig struct {
 	PostViewFlushThreshold int    `yaml:"post_view_flush_threshold"`
 	CommentListTTLSeconds  int    `yaml:"comment_list_ttl_seconds"`
 	NullCacheTTLSeconds    int    `yaml:"null_cache_ttl_seconds"`
+}
+
+type RabbitMQConfig struct {
+	Enabled           bool   `yaml:"enabled"`
+	URL               string `yaml:"url"`
+	NotificationQueue string `yaml:"notification_queue"`
 }
 
 type JWTConfig struct {
@@ -132,6 +139,12 @@ func (c *Config) withDefaults() {
 	}
 	if c.Redis.NullCacheTTLSeconds == 0 {
 		c.Redis.NullCacheTTLSeconds = 60
+	}
+	if c.RabbitMQ.URL == "" {
+		c.RabbitMQ.URL = "amqp://feedlab:feedlab_pass@127.0.0.1:5672/"
+	}
+	if c.RabbitMQ.NotificationQueue == "" {
+		c.RabbitMQ.NotificationQueue = "notification.queue"
 	}
 }
 

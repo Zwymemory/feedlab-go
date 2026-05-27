@@ -147,6 +147,20 @@ export const modules: QuizModule[] = [
     subtitle: "Redis Key、TTL、失效策略、面试表达",
     accent: "#111827",
     summary: "把 V3 的缓存、排行榜、计数、限流、防穿透和观测能力串成一套能讲清楚的项目经验。"
+  },
+  {
+    id: "module-v4-rabbitmq-notifications",
+    title: "V4 模块 1：RabbitMQ 异步通知",
+    subtitle: "MQ、生产者、消费者、异步落库",
+    accent: "#7c2d12",
+    summary: "理解为什么互动通知适合异步化，以及 RabbitMQ 如何把点赞、评论、关注事件交给 Worker 消费。"
+  },
+  {
+    id: "module-v4-notification-inbox",
+    title: "V4 模块 2：通知收件箱",
+    subtitle: "notifications 表、未读数、已读、幂等",
+    accent: "#1d4ed8",
+    summary: "理解通知表如何建模，为什么 message_id 唯一索引能解决 MQ 重复消费问题。"
   }
 ];
 
@@ -1732,5 +1746,111 @@ export const questions: Question[] = [
     keyPoints: ["时间衰减", "版本号 Key", "异步 Worker", "滑动窗口", "布隆过滤器"],
     interviewTips: ["不要说当前方案完美。能说出边界和演进方向，反而更像真实工程经验。"],
     codeRefs: ["docs/feedlab-v3-redis-cache-guide.md"]
+  },
+  {
+    id: "v4-rabbitmq-why-1",
+    moduleId: "module-v4-rabbitmq-notifications",
+    type: "single",
+    title: "为什么通知适合异步化？",
+    prompt: "FeedLab V4 在点赞、收藏、评论、关注后通过 RabbitMQ 异步写通知。最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "RabbitMQ 可以替代 MySQL 保存所有通知数据" },
+      { id: "B", text: "互动主流程只需要保证业务成功，通知可以稍后落库，减少接口耗时和耦合" },
+      { id: "C", text: "用了 RabbitMQ 之后就不需要事务" },
+      { id: "D", text: "Swagger 必须依赖 RabbitMQ 才能展示接口" }
+    ],
+    correctAnswers: ["B"],
+    referenceAnswer: "通知属于互动行为的后续副作用。点赞、评论、关注的主流程应该先保证关系表和计数字段成功；通知写入可以通过 RabbitMQ 异步处理，降低接口耗时，也避免通知逻辑和业务 Service 强耦合。",
+    explanation: "异步化不是为了让数据不重要，而是把主流程和非核心副作用拆开。通知允许短暂延迟，但点赞关系和评论创建必须立即一致。",
+    whyOthersWrong: {
+      A: "RabbitMQ 是消息队列，不是最终通知存储，notifications 表仍在 MySQL。",
+      C: "主业务写多表时仍然需要事务。",
+      D: "Swagger 和 RabbitMQ 没有依赖关系。"
+    },
+    keyPoints: ["主流程", "副作用", "异步解耦", "降低接口耗时", "最终落库"],
+    interviewTips: ["可以说：通知失败不应该影响用户点赞成功，但后续要用监控、重试或 outbox 提升可靠性。"],
+    codeRefs: ["backend/internal/service/like_service.go", "backend/internal/event/notification.go", "backend/internal/mq/notification_publisher.go"]
+  },
+  {
+    id: "v4-rabbitmq-flow-1",
+    moduleId: "module-v4-rabbitmq-notifications",
+    type: "short",
+    title: "点赞通知的完整链路",
+    prompt: "请解释一次 POST /api/v1/posts/:id/like 如何产生通知。",
+    referenceAnswer: "请求先经过 JWT 中间件进入 LikeController.LikePost，Controller 解析 post id 和当前用户后调用 LikeService.LikePost。Service 校验帖子可见，在事务里插入 post_likes 并维护 posts.like_count。只有第一次点赞成功插入关系时，Service 才调用 NotificationPublisher 发布 post_like 事件到 RabbitMQ。NotificationConsumer 消费 notification.queue，把消息转换为 notifications 表记录，接收人是帖子作者，actor 是点赞用户。",
+    explanation: "这道题训练你把 HTTP、Service 事务、MQ 生产者、消费者和通知表串起来讲。",
+    keyPoints: ["JWT", "LikeService", "事务", "只在首次点赞发布", "notification.queue", "notifications 表"],
+    interviewTips: ["强调重复点赞是幂等的，因此不会重复增加 like_count，也不会重复产生通知。"],
+    codeRefs: ["backend/internal/controller/like_controller.go", "backend/internal/service/like_service.go", "backend/internal/service/notification_events.go", "backend/internal/mq/notification_consumer.go"]
+  },
+  {
+    id: "v4-rabbitmq-durable-1",
+    moduleId: "module-v4-rabbitmq-notifications",
+    type: "multiple",
+    title: "RabbitMQ 队列可靠性细节",
+    prompt: "关于当前 V4 的 notification.queue，下面哪些说法正确？",
+    choices: [
+      { id: "A", text: "队列声明为 durable，RabbitMQ 重启后队列元数据仍可保留" },
+      { id: "B", text: "发布消息时使用 Persistent delivery mode，提升消息持久化可靠性" },
+      { id: "C", text: "消费者手动 Ack，处理成功后才确认消息" },
+      { id: "D", text: "所有消息都会永久重试，哪怕 JSON 格式错误也不会丢弃" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "当前队列是 durable，消息使用 Persistent 投递模式，消费者使用手动 Ack。处理成功才 Ack；非法 JSON 或缺必要字段会被丢弃，避免毒消息无限重试。",
+    explanation: "队列持久化、消息持久化和手动 Ack 是三个不同层面的可靠性设计。毒消息要进入丢弃或死信策略，不能一直阻塞正常消费。",
+    whyOthersWrong: {
+      D: "格式错误消息会 Nack 且不 requeue；缺字段的坏事件也会丢弃。"
+    },
+    keyPoints: ["durable queue", "persistent message", "manual ack", "poison message", "Nack"],
+    interviewTips: ["可以补充：真实生产还会加死信队列、重试次数和告警。"],
+    codeRefs: ["backend/internal/mq/notification_publisher.go", "backend/internal/mq/notification_consumer.go"]
+  },
+  {
+    id: "v4-notification-idempotent-1",
+    moduleId: "module-v4-notification-inbox",
+    type: "single",
+    title: "通知消费为什么要幂等？",
+    prompt: "RabbitMQ 消息可能因为网络抖动或消费者重启被重复投递。FeedLab V4 主要用什么方式避免重复通知落库？",
+    choices: [
+      { id: "A", text: "notifications.message_id 唯一索引 + OnConflict DoNothing" },
+      { id: "B", text: "把所有通知存在 Gin Context 里" },
+      { id: "C", text: "关闭 RabbitMQ 的重试机制" },
+      { id: "D", text: "前端刷新页面时删除重复通知" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "V4 给每条通知事件生成稳定 message_id，并在 notifications 表上建立唯一约束。消费者落库时使用 OnConflict DoNothing，重复消息即使再次消费，也不会插入重复通知。",
+    explanation: "MQ 系统常见语义是至少一次投递，消费者必须能承受重复消息。幂等落库是通知系统的关键点。",
+    whyOthersWrong: {
+      B: "Gin Context 只存在于一次请求生命周期，消费者不依赖它保存通知。",
+      C: "不能靠关闭重试解决可靠性问题。",
+      D: "重复数据应该在后端数据层防住，不交给前端兜底。"
+    },
+    keyPoints: ["至少一次投递", "message_id", "唯一索引", "OnConflict", "幂等消费"],
+    interviewTips: ["回答时可以说：生产者和消费者都可能重复，数据库唯一约束是最后一道防线。"],
+    codeRefs: ["backend/internal/model/notification.go", "backend/internal/repository/notification_repository.go"]
+  },
+  {
+    id: "v4-notification-table-1",
+    moduleId: "module-v4-notification-inbox",
+    type: "short",
+    title: "notifications 表字段怎么理解？",
+    prompt: "请解释 notifications 表里 user_id、actor_id、type、subject_type、subject_id、message_id 分别代表什么。",
+    referenceAnswer: "user_id 是通知接收人；actor_id 是触发通知的人；type 表示通知动作，例如 post_like、comment、reply、follow；subject_type 表示动作对象类型，例如 post、comment、user；subject_id 是动作对象 ID；message_id 是用于幂等消费的业务消息唯一标识，防止 RabbitMQ 重复投递导致重复通知。",
+    explanation: "通知表的核心是“谁对谁的什么对象做了什么”。user_id 和 actor_id 不能混淆，message_id 是面向 MQ 的工程字段。",
+    keyPoints: ["接收人", "触发者", "动作类型", "对象类型", "对象 ID", "幂等 ID"],
+    interviewTips: ["可以用例子回答：用户 2 点赞用户 1 的帖子 10，则 user_id=1、actor_id=2、type=post_like、subject_type=post、subject_id=10。"],
+    codeRefs: ["backend/internal/model/notification.go", "backend/internal/event/notification.go"]
+  },
+  {
+    id: "v4-notification-api-1",
+    moduleId: "module-v4-notification-inbox",
+    type: "code",
+    title: "通知收件箱 API 为什么必须登录？",
+    prompt: "请结合代码说明为什么 GET /api/v1/notifications、/unread-count、/:id/read、/read-all 都必须经过 JWT 中间件。",
+    referenceAnswer: "router.New 中把 notifications 路由组统一挂上 authMiddleware.RequireAuth，所以通知列表、未读数和标记已读接口都会先解析 Authorization Bearer Token。Controller 从上下文读取当前 user_id，然后 Service 和 Repository 都按 user_id 限定数据范围。这样用户只能看到和修改自己的通知，不能通过猜 notification id 标记别人的通知已读。",
+    explanation: "通知是用户私有数据，必须在路由层统一鉴权，并在 Service/Repository 层继续用 user_id 做数据归属限制。",
+    keyPoints: ["RequireAuth", "user_id from context", "私有数据", "归属校验", "不能越权"],
+    interviewTips: ["可以强调：鉴权不是只看有没有 Token，还要把操作限定到当前用户的数据范围。"],
+    codeRefs: ["backend/internal/router/router.go", "backend/internal/controller/notification_controller.go", "backend/internal/service/notification_service.go"]
   }
 ];

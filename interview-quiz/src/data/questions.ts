@@ -175,6 +175,13 @@ export const modules: QuizModule[] = [
     subtitle: "最新、热门、游标、通知、演示账号",
     accent: "#a855f7",
     summary: "理解如何把 V1-V4 的后端能力整合成可演示路径，让面试官快速看到项目价值。"
+  },
+  {
+    id: "module-v5-demo-seed",
+    title: "展示收尾：Demo Seed",
+    subtitle: "幂等脚本、演示账号、稳定数据",
+    accent: "#22c55e",
+    summary: "理解为什么找实习展示项目需要可重复生成演示数据，以及 seed 脚本如何避免泄露真实账号和误删数据。"
   }
 ];
 
@@ -1933,5 +1940,63 @@ export const questions: Question[] = [
     keyPoints: ["首页技术路线", "Feed", "互动", "通知中心", "用户主页", "系统驾驶舱"],
     interviewTips: ["先讲结果，再讲背后的技术。这样非后端面试官也能理解项目价值。"],
     codeRefs: ["frontend/README.md", "frontend/src/App.tsx"]
+  },
+  {
+    id: "v5-seed-why-1",
+    moduleId: "module-v5-demo-seed",
+    type: "single",
+    title: "为什么需要 Demo Seed？",
+    prompt: "FeedLab 已经有前端和 Postman，为什么还要新增 go run ./cmd/seed-demo？",
+    choices: [
+      { id: "A", text: "为了让演示账号、Feed、热门榜和通知中心每次都稳定有数据" },
+      { id: "B", text: "为了替代所有单元测试" },
+      { id: "C", text: "为了绕过 bcrypt 保存明文密码" },
+      { id: "D", text: "为了清空用户真实测试数据" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "Demo Seed 的价值是让展示环境可重复。运行脚本后，Alice、Mer_src 和 V4 Demo 账号、帖子、互动关系、热门分数和未读通知都会准备好，前端一键登录和演示路线不依赖手动造数据。",
+    explanation: "找实习展示时，稳定可重复比临场手动操作更重要。seed 脚本能降低录屏和面试演示翻车概率。",
+    whyOthersWrong: {
+      B: "seed 不是测试，不能替代 go test 或前端 build。",
+      C: "脚本仍然使用 bcrypt 哈希密码，不保存明文。",
+      D: "当前策略是幂等更新，不清空全库。"
+    },
+    keyPoints: ["可重复演示", "固定账号", "Feed 有内容", "通知有数据", "降低演示风险"],
+    interviewTips: ["可以说：这个脚本是工程化展示的一部分，不是业务接口。"],
+    codeRefs: ["backend/cmd/seed-demo/main.go", "frontend/README.md"]
+  },
+  {
+    id: "v5-seed-idempotent-1",
+    moduleId: "module-v5-demo-seed",
+    type: "short",
+    title: "seed-demo 如何做到幂等？",
+    prompt: "请解释 demo seed 脚本重复运行时为什么不会制造重复账号、重复关系或错误计数。",
+    referenceAnswer: "账号按 email 查找并更新；帖子按 user_id + title 查找并更新；点赞、收藏、关注、通知依赖唯一索引或稳定 message_id，插入时使用 OnConflict；最后脚本按实际关系表重新统计 post_count、follower_count、like_count、collect_count、comment_count。这样重复运行会把数据校准到演示状态，而不是无限叠加。",
+    explanation: "幂等 seed 的核心不是“什么都不做”，而是用稳定业务键和重新计算计数，让结果可预测。",
+    keyPoints: ["email", "user_id + title", "唯一索引", "message_id", "重新统计计数"],
+    interviewTips: ["回答时可以强调：没有使用全库清空，避免误删真实测试数据。"],
+    codeRefs: ["backend/cmd/seed-demo/main.go", "backend/internal/model"]
+  },
+  {
+    id: "v5-seed-notification-1",
+    moduleId: "module-v5-demo-seed",
+    type: "multiple",
+    title: "seed 通知数据为什么直接写表？",
+    prompt: "关于当前 demo seed 的通知数据处理，下面哪些说法正确？",
+    choices: [
+      { id: "A", text: "脚本直接写 notifications 表，保证不依赖 API 和 RabbitMQ consumer 同时运行" },
+      { id: "B", text: "真实业务接口仍然会通过 RabbitMQ 产生通知" },
+      { id: "C", text: "通知使用稳定 message_id，重复运行不会产生重复通知" },
+      { id: "D", text: "直接写表意味着 V4 RabbitMQ 功能被删除了" }
+    ],
+    correctAnswers: ["A", "B", "C"],
+    referenceAnswer: "seed 的目标是准备稳定演示状态，所以直接写 notifications 表。真实业务链路没有被删除：用户在前端点赞、评论、关注时，后端仍会发布 RabbitMQ 消息并由 consumer 落库。seed 通知使用稳定 message_id，避免重复。",
+    explanation: "演示准备脚本和真实业务链路目标不同。seed 重稳定性，接口重真实业务行为。",
+    whyOthersWrong: {
+      D: "RabbitMQ 功能仍然存在，seed 只是额外准备演示数据。"
+    },
+    keyPoints: ["直接写通知表", "不依赖 consumer", "真实链路仍在", "message_id 幂等"],
+    interviewTips: ["可以主动说明：V4 验收文档仍用于证明 MQ 真实链路。"],
+    codeRefs: ["backend/cmd/seed-demo/main.go", "docs/feedlab-v4-acceptance-and-demo.md"]
   }
 ];

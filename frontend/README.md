@@ -39,6 +39,7 @@ cd /Users/zwy/Documents/Build_My_Vps-Go
 docker compose up -d mysql redis rabbitmq
 
 cd /Users/zwy/Documents/Build_My_Vps-Go/backend
+go run ./cmd/seed-demo
 go run ./cmd/api
 ```
 
@@ -65,7 +66,7 @@ npm run dev -- --port 5176
 ## 演示流程
 
 1. 打开 `/`，介绍项目总览和 V1-V4 技术路线。
-2. 点击左侧演示账号登录，确认用户信息和服务状态更新。
+2. 确认已经执行 `go run ./cmd/seed-demo`，然后点击左侧演示账号登录，确认用户信息和服务状态更新。
 3. 进入 `/feed`，切换“最新 / 热门 / 游标”，说明 V3 Feed 和 Redis 热门榜。
 4. 发布一篇帖子，点击帖子卡片，执行点赞、收藏、评论。
 5. 切换另一个账号，对第一位用户的帖子做互动。

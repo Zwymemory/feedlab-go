@@ -111,6 +111,25 @@ V4 完成后，如果你想理解 RabbitMQ 生产者、消费者、通知表、�
 
 这份文档用于录屏和面试展示，包含 RabbitMQ 管理台检查点、Postman 流程、curl 验收脚本和面试讲解模板。
 
+## 演示数据准备
+
+V5 前端左侧提供 Alice、Mer_src、V4 Demo 三个一键演示账号。首次演示前先运行 seed 命令，脚本会幂等创建账号、帖子、互动关系、热门分数和通知数据：
+
+```bash
+cd /Users/zwy/Documents/Build_My_Vps-Go/backend
+go run ./cmd/seed-demo
+```
+
+固定演示账号：
+
+| 角色 | 邮箱 | 密码 | 用途 |
+|---|---|---|---|
+| Alice 作者 | `alice@example.com` | `secret123` | 拥有展示帖子，并接收通知 |
+| Mer_src 互动号 | `mer@example.com` | `secret123` | 点赞、收藏、评论和关注 Alice |
+| V4 Demo | `v4demo@example.com` | `secret123` | 辅助制造关注、点赞和回复数据 |
+
+脚本采用幂等更新策略，不清空全库；重复运行只会补齐演示数据并重新计算相关计数。
+
 ## 本地启动
 
 1. 启动 MySQL、Redis 和 RabbitMQ：
@@ -123,6 +142,7 @@ docker compose up -d mysql redis rabbitmq
 
 ```bash
 cd /Users/zwy/Documents/Build_My_Vps-Go/backend
+go run ./cmd/seed-demo
 go run ./cmd/api
 ```
 
@@ -1573,6 +1593,7 @@ Postman 中执行 `Module 23 - V4 RabbitMQ Notifications`：
 - V4 模块 2：通知表、未读数和消费端幂等
 - V5 模块 1：路由化展示前端与 GSAP 动效
 - V5 模块 2：Feed 流、通知中心和项目演示表达
+- 展示收尾：Go CLI 演示数据脚本与可重复录屏环境
 
 每道题都会提供答案和解析：
 

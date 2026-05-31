@@ -264,4 +264,3 @@ curl -sS "$BASE/api/v1/notifications/unread-count" \
 如果面试官追问“RabbitMQ 怎么保证消息不丢”，可以回答：
 
 > 当前 V4 做了基础可靠性：durable queue、persistent message、manual ack、消费端幂等。生产级还可以继续做 outbox 表、死信队列、重试次数、监控告警。这个项目里我先实现了适合实习展示的核心链路。
-

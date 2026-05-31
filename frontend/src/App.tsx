@@ -17,7 +17,7 @@ type Notice = { type: "success" | "error" | "info"; text: string } | null;
 
 const demoAccounts = [
   { label: "Alice 作者", email: "alice@example.com", password: "secret123" },
-  { label: "Mer_src 互动号", email: "merr@example.com", password: "secret123" },
+  { label: "Mer_src 互动号", email: "mer@example.com", password: "secret123" },
   { label: "V4 演示账号", email: "v4demo@example.com", password: "secret123" }
 ];
 

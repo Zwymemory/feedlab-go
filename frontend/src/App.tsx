@@ -814,6 +814,13 @@ function PilotCard({
   onLogout: () => void;
   onDemoLogin: (payload: LoginPayload) => void;
 }) {
+  const [loginForm, setLoginForm] = useState<LoginPayload>({ email: "", password: "" });
+
+  function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onDemoLogin(loginForm);
+  }
+
   return (
     <section className="pilot-card">
       <div className="pilot-head">
@@ -828,6 +835,30 @@ function PilotCard({
         <Metric label="关注" value={String(currentUser?.following_count ?? 0)} />
         <Metric label="未读" value={String(unreadCount)} />
       </div>
+      <form className="pilot-login-form" onSubmit={submitLogin}>
+        <label>
+          <span>邮箱</span>
+          <input
+            type="email"
+            value={loginForm.email}
+            placeholder="alice@example.com"
+            onChange={(event) => setLoginForm({ ...loginForm, email: event.target.value })}
+            required
+          />
+        </label>
+        <label>
+          <span>密码</span>
+          <input
+            type="password"
+            value={loginForm.password}
+            placeholder="secret123"
+            minLength={6}
+            onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+            required
+          />
+        </label>
+        <button type="submit">使用输入账号接入</button>
+      </form>
       <div className="demo-logins">
         {demoAccounts.map((account) => (
           <button key={account.email} type="button" onClick={() => onDemoLogin(account)}>

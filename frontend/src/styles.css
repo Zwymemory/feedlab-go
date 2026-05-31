@@ -258,9 +258,43 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.demo-logins {
+.demo-logins,
+.pilot-login-form {
   display: grid;
   gap: 8px;
+}
+
+.pilot-login-form {
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.28);
+}
+
+.pilot-login-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.pilot-login-form label span {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.pilot-login-form input {
+  min-height: 36px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.pilot-login-form button {
+  min-height: 36px;
+  border: 1px solid rgba(167, 243, 208, 0.32);
+  border-radius: 10px;
+  color: #022c22;
+  background: linear-gradient(135deg, #67e8f9, #a7f3d0);
+  font-weight: 900;
 }
 
 .demo-logins button,

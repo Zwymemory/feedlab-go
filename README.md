@@ -71,6 +71,12 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 
 ## V1 架构源码导读
 
+如果你准备把 FeedLab 作为实习项目讲给面试官，建议先阅读：
+
+[FeedLab 面试讲解路线图](./docs/feedlab-interview-roadmap.md)
+
+这份文档会把 V1-V5 串成一条完整项目叙事，包含 30 秒项目介绍、2 分钟项目介绍、核心调用链、Redis/RabbitMQ 讲法和高频追问回答。
+
 如果你想按源码理解 Controller、Service、Repository、DTO、VO、Model 之间的关系，可以阅读：
 
 [FeedLab Go V1 架构源码导读](./docs/feedlab-v1-architecture-guide.md)

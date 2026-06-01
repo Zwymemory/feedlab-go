@@ -3,12 +3,14 @@ import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } fro
 import gsap from "gsap";
 import { api, ApiError, tokenStore } from "./api/client";
 import type {
+  Comment,
   CreatePostPayload,
   HealthStatus,
   LoginPayload,
   NotificationItem,
   Post,
   PublicUser,
+  PublicUserList,
   User
 } from "./types";
 
@@ -308,6 +310,7 @@ function FeedPage({
   onNotice: (notice: Notice) => void;
   onMeChanged: () => void;
 }) {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<FeedMode>("latest");
   const [posts, setPosts] = useState<Post[]>([]);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -350,6 +353,16 @@ function FeedPage({
         <textarea value={form.content} placeholder="写下你的帖子内容，发布后会进入 Feed。" onChange={(event) => setForm({ ...form, content: event.target.value })} />
       </form>
 
+      {mode === "hot" && (
+        <section className="hot-formula stagger-in" aria-label="热门排序说明">
+          <div>
+            <strong>热门排序由后端 Redis ZSet 返回</strong>
+            <span>热度分 = 点赞数 * 3 + 收藏数 * 5 + 评论数 * 4</span>
+          </div>
+          <p>如果某条帖子没有排第一，优先看它在 Redis `rank:hot_posts` 里的 score，而不是只看肉眼的赞评数量。</p>
+        </section>
+      )}
+
       <div className="feed-main">
         <div className="post-stream">
           {loading && <p className="empty-signal">正在同步 Feed...</p>}
@@ -372,6 +385,7 @@ function FeedPage({
             setSelectedPost(next);
             setPosts((items) => items.map((item) => (item.id === next.id ? next : item)));
           }}
+          onOpenUser={(id) => navigate(`/profile/${id}`)}
         />
       </div>
     </section>
@@ -440,27 +454,65 @@ function PostDetailPanel({
   post,
   token,
   onNotice,
-  onPostChanged
+  onPostChanged,
+  onOpenUser
 }: {
   post: Post | null;
   token: string | null;
   onNotice: (notice: Notice) => void;
   onPostChanged: (post: Post) => void;
+  onOpenUser?: (userID: number) => void;
 }) {
+  const [detail, setDetail] = useState<Post | null>(post);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [replyMap, setReplyMap] = useState<Record<number, Comment[]>>({});
+  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
+  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
+  const [postLiked, setPostLiked] = useState(false);
+  const [postCollected, setPostCollected] = useState(false);
+  const [commentLikeMap, setCommentLikeMap] = useState<Record<number, boolean>>({});
   const [comment, setComment] = useState("");
-  const [busy, setBusy] = useState<"like" | "collect" | "comment" | null>(null);
+  const [busy, setBusy] = useState<"detail" | "like" | "collect" | "comment" | `reply-${number}` | `comment-like-${number}` | null>(null);
+  const actionGuardRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    setDetail(post);
+    setComments([]);
+    setReplyMap({});
+    setExpandedReplies({});
+    setReplyDrafts({});
+    setPostLiked(false);
+    setPostCollected(false);
+    setCommentLikeMap({});
+    setComment("");
+    if (post) {
+      void loadPostDetail(post.id);
+      void loadComments(post.id);
+    }
+  }, [post?.id]);
+
+  useEffect(() => {
+    if (post) {
+      void loadPostActions(post.id);
+    }
+  }, [post?.id, token]);
+
+  useEffect(() => {
+    const loadedReplies = Object.values(replyMap).flat();
+    void loadCommentLikeStatuses([...comments, ...loadedReplies]);
+  }, [token]);
 
   if (!post) {
     return <aside className="post-detail empty">选择一条帖子查看详情。</aside>;
   }
-  const activePost = post;
+  const activePost = detail ?? post;
 
   return (
     <aside className="post-detail stagger-in">
       <div className="detail-beacon" />
       <p className="kicker">Signal #{activePost.id}</p>
       <h2>{activePost.title}</h2>
-      <button className="author-link" type="button">
+      <button className="author-link" type="button" onClick={() => onOpenUser?.(activePost.author.id)}>
         @{activePost.author.username}
       </button>
       <p className="detail-content">{activePost.content}</p>
@@ -469,45 +521,210 @@ function PostDetailPanel({
         <span>{activePost.like_count} 赞</span>
         <span>{activePost.collect_count} 收藏</span>
         <span>{activePost.comment_count} 评论</span>
+        <span>热度 {Math.round(activePost.hot_score)}</span>
       </div>
       <div className="detail-actions">
-        <button type="button" disabled={!token || busy === "like"} onClick={likePost}>点赞</button>
-        <button type="button" disabled={!token || busy === "collect"} onClick={collectPost}>收藏</button>
+        <button type="button" className={postLiked ? "active" : ""} disabled={!token || busy === "like"} onClick={togglePostLike}>
+          {busy === "like" ? "处理中" : postLiked ? "已点赞" : "点赞"}
+        </button>
+        <button type="button" className={postCollected ? "active" : ""} disabled={!token || busy === "collect"} onClick={togglePostCollect}>
+          {busy === "collect" ? "处理中" : postCollected ? "已收藏" : "收藏"}
+        </button>
       </div>
       <form className="inline-comment" onSubmit={submitComment}>
         <textarea value={comment} placeholder="写一条评论，V4 会异步通知作者。" onChange={(event) => setComment(event.target.value)} />
         <button type="submit" disabled={!token || busy === "comment"}>{busy === "comment" ? "发送中" : "评论"}</button>
       </form>
+      <section className="comment-deck" aria-label="评论列表">
+        <div className="section-title">
+          <strong>评论轨道</strong>
+          <button type="button" onClick={() => loadComments(activePost.id)} disabled={busy === "detail"}>刷新</button>
+        </div>
+        {comments.length === 0 && <p className="empty-signal compact">暂无评论。登录后可以写第一条。</p>}
+        {comments.map((item) => (
+          <article className="comment-card" key={item.id}>
+            <div className="comment-head">
+              <button className="author-link" type="button" onClick={() => onOpenUser?.(item.author.id)}>
+                @{item.author.username}
+              </button>
+              <span>{formatTime(item.created_at)}</span>
+            </div>
+            <p>{item.content}</p>
+            <div className="comment-actions">
+              <button type="button" onClick={() => toggleReplies(item.id)}>
+                {expandedReplies[item.id] ? "收起回复" : "查看回复"}
+              </button>
+              <button
+                type="button"
+                className={commentLikeMap[item.id] ? "active" : ""}
+                disabled={!token || busy === `comment-like-${item.id}`}
+                onClick={() => toggleCommentLike(item.id)}
+              >
+                {commentLikeMap[item.id] ? "已赞" : "点赞"} · {item.like_count}
+              </button>
+            </div>
+            {expandedReplies[item.id] && (
+              <div className="reply-thread">
+                {(replyMap[item.id] ?? []).map((reply) => (
+                  <article className="reply-card" key={reply.id}>
+                    <button className="author-link" type="button" onClick={() => onOpenUser?.(reply.author.id)}>
+                      @{reply.author.username}
+                    </button>
+                    <p>{reply.content}</p>
+                    <div className="comment-actions">
+                      <button
+                        type="button"
+                        className={commentLikeMap[reply.id] ? "active" : ""}
+                        disabled={!token || busy === `comment-like-${reply.id}`}
+                        onClick={() => toggleCommentLike(reply.id)}
+                      >
+                        {commentLikeMap[reply.id] ? "已赞" : "点赞"} · {reply.like_count}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {(replyMap[item.id] ?? []).length === 0 && <p className="empty-signal compact">还没有回复。</p>}
+                <form className="reply-form" onSubmit={(event) => submitReply(event, item.id)}>
+                  <input
+                    value={replyDrafts[item.id] ?? ""}
+                    placeholder="回复这条评论"
+                    onChange={(event) => setReplyDrafts((drafts) => ({ ...drafts, [item.id]: event.target.value }))}
+                  />
+                  <button type="submit" disabled={!token || busy === `reply-${item.id}`}>
+                    {busy === `reply-${item.id}` ? "发送中" : "回复"}
+                  </button>
+                </form>
+              </div>
+            )}
+          </article>
+        ))}
+      </section>
     </aside>
   );
 
-  async function likePost() {
-    if (!token) {
-      return;
-    }
-    setBusy("like");
+  async function loadPostDetail(postID: number) {
+    setBusy("detail");
     try {
-      const result = await api.likePost(activePost.id, token);
-      onPostChanged({ ...activePost, like_count: result.like_count });
-      onNotice({ type: "success", text: "点赞成功，通知会经 RabbitMQ 异步送达。" });
+      const next = await api.postDetail(postID);
+      setDetail(next);
+      onPostChanged(next);
     } catch (error) {
-      onNotice({ type: "error", text: formatError(error, "点赞失败。") });
+      onNotice({ type: "error", text: formatError(error, "帖子详情加载失败。") });
     } finally {
       setBusy(null);
     }
   }
 
-  async function collectPost() {
+  async function loadPostActions(postID: number) {
     if (!token) {
+      setPostLiked(false);
+      setPostCollected(false);
+      return;
+    }
+    try {
+      const [likeStatus, collectStatus] = await Promise.all([
+        api.postLiked(postID, token),
+        api.postCollected(postID, token)
+      ]);
+      setPostLiked(likeStatus.liked);
+      setPostCollected(collectStatus.collected);
+      patchActivePost({
+        like_count: likeStatus.like_count,
+        collect_count: collectStatus.collect_count
+      });
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "点赞/收藏状态加载失败。") });
+    }
+  }
+
+  async function loadComments(postID: number) {
+    try {
+      const result = await api.listComments(postID, 1, 20);
+      setComments(result.items);
+      await loadCommentLikeStatuses(result.items);
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "评论加载失败。") });
+    }
+  }
+
+  async function loadCommentLikeStatuses(items: Comment[]) {
+    if (!token || items.length === 0) {
+      if (!token) {
+        setCommentLikeMap({});
+      }
+      return;
+    }
+    try {
+      const statuses = await Promise.all(items.map((item) => api.commentLiked(item.id, token)));
+      setCommentLikeMap((current) => {
+        const next = { ...current };
+        for (const status of statuses) {
+          next[status.comment_id] = status.liked;
+        }
+        return next;
+      });
+      for (const status of statuses) {
+        patchCommentLikeCount(status.comment_id, status.like_count);
+      }
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "评论点赞状态加载失败。") });
+    }
+  }
+
+  async function toggleReplies(commentID: number) {
+    const nextOpen = !expandedReplies[commentID];
+    setExpandedReplies((current) => ({ ...current, [commentID]: nextOpen }));
+    if (!nextOpen || replyMap[commentID]) {
+      return;
+    }
+    try {
+      const result = await api.listReplies(commentID, 1, 20);
+      setReplyMap((current) => ({ ...current, [commentID]: result.items }));
+      await loadCommentLikeStatuses(result.items);
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "回复加载失败。") });
+    }
+  }
+
+  async function togglePostLike() {
+    if (!token) {
+      return;
+    }
+    if (!allowAction(`post-like-${activePost.id}`)) {
+      return;
+    }
+    setBusy("like");
+    try {
+      const result = postLiked
+        ? await api.unlikePost(activePost.id, token)
+        : await api.likePost(activePost.id, token);
+      setPostLiked(result.liked);
+      patchActivePost({ like_count: result.like_count });
+      onNotice({ type: "success", text: result.liked ? "点赞成功，通知会经 RabbitMQ 异步送达。" : "已取消点赞。" });
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, postLiked ? "取消点赞失败。" : "点赞失败。") });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function togglePostCollect() {
+    if (!token) {
+      return;
+    }
+    if (!allowAction(`post-collect-${activePost.id}`)) {
       return;
     }
     setBusy("collect");
     try {
-      const result = await api.collectPost(activePost.id, token);
-      onPostChanged({ ...activePost, collect_count: result.collect_count });
-      onNotice({ type: "success", text: "收藏成功。" });
+      const result = postCollected
+        ? await api.uncollectPost(activePost.id, token)
+        : await api.collectPost(activePost.id, token);
+      setPostCollected(result.collected);
+      patchActivePost({ collect_count: result.collect_count });
+      onNotice({ type: "success", text: result.collected ? "收藏成功。" : "已取消收藏。" });
     } catch (error) {
-      onNotice({ type: "error", text: formatError(error, "收藏失败。") });
+      onNotice({ type: "error", text: formatError(error, postCollected ? "取消收藏失败。" : "收藏失败。") });
     } finally {
       setBusy(null);
     }
@@ -522,13 +739,99 @@ function PostDetailPanel({
     try {
       await api.createComment(activePost.id, { content: comment.trim(), parent_id: 0 }, token);
       setComment("");
-      onPostChanged({ ...activePost, comment_count: activePost.comment_count + 1 });
+      incrementPostCommentCount();
+      await loadComments(activePost.id);
       onNotice({ type: "success", text: "评论已发布，作者会收到异步通知。" });
     } catch (error) {
       onNotice({ type: "error", text: formatError(error, "评论失败。") });
     } finally {
       setBusy(null);
     }
+  }
+
+  async function submitReply(event: FormEvent<HTMLFormElement>, parentID: number) {
+    event.preventDefault();
+    const content = (replyDrafts[parentID] ?? "").trim();
+    if (!token || !content) {
+      return;
+    }
+    setBusy(`reply-${parentID}`);
+    try {
+      await api.createComment(activePost.id, { content, parent_id: parentID }, token);
+      const result = await api.listReplies(parentID, 1, 20);
+      setReplyMap((current) => ({ ...current, [parentID]: result.items }));
+      setReplyDrafts((drafts) => ({ ...drafts, [parentID]: "" }));
+      incrementPostCommentCount();
+      await loadCommentLikeStatuses(result.items);
+      onNotice({ type: "success", text: "回复已发布。" });
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "回复失败。") });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function toggleCommentLike(commentID: number) {
+    if (!token) {
+      return;
+    }
+    if (!allowAction(`comment-like-${commentID}`)) {
+      return;
+    }
+    const liked = commentLikeMap[commentID] ?? false;
+    setBusy(`comment-like-${commentID}`);
+    try {
+      const result = liked
+        ? await api.unlikeComment(commentID, token)
+        : await api.likeComment(commentID, token);
+      setCommentLikeMap((current) => ({ ...current, [commentID]: result.liked }));
+      patchCommentLikeCount(commentID, result.like_count);
+      onNotice({ type: "success", text: result.liked ? "评论点赞成功。" : "已取消评论点赞。" });
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, liked ? "取消评论点赞失败。" : "评论点赞失败。") });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function allowAction(key: string) {
+    const now = Date.now();
+    const last = actionGuardRef.current[key] ?? 0;
+    if (now - last < 800) {
+      onNotice({ type: "info", text: "操作太频繁，请稍等一下再试。" });
+      return false;
+    }
+    actionGuardRef.current[key] = now;
+    return true;
+  }
+
+  function patchActivePost(patch: Partial<Post>) {
+    const base = detail ?? post;
+    if (!base) {
+      return;
+    }
+    const next = normalizePostHotScore({ ...base, ...patch });
+    setDetail(next);
+    onPostChanged(next);
+  }
+
+  function incrementPostCommentCount() {
+    patchActivePost({ comment_count: activePost.comment_count + 1 });
+  }
+
+  function patchCommentLikeCount(commentID: number, likeCount: number) {
+    setComments((items) => items.map((item) => (
+      item.id === commentID ? { ...item, like_count: likeCount } : item
+    )));
+    setReplyMap((current) => {
+      const next: Record<number, Comment[]> = {};
+      for (const [parentID, replies] of Object.entries(current)) {
+        next[Number(parentID)] = replies.map((reply) => (
+          reply.id === commentID ? { ...reply, like_count: likeCount } : reply
+        ));
+      }
+      return next;
+    });
   }
 }
 
@@ -652,6 +955,9 @@ function ProfilePage({
   const [input, setInput] = useState(params.id ?? currentUser?.id?.toString() ?? "1");
   const [profile, setProfile] = useState<PublicUser | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [relationTab, setRelationTab] = useState<"posts" | "followers" | "following">("posts");
+  const [relations, setRelations] = useState<PublicUserList | null>(null);
   const [followed, setFollowed] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -682,9 +988,15 @@ function ProfilePage({
             <h2>{profile.nickname || profile.username}</h2>
             <p>@{profile.username}</p>
             <div className="stat-row vertical">
-              <span>{profile.post_count} 发帖</span>
-              <span>{profile.follower_count} 粉丝</span>
-              <span>{profile.following_count} 关注</span>
+              <button className={relationTab === "posts" ? "active" : ""} type="button" onClick={showProfilePosts}>
+                {profile.post_count} 发帖
+              </button>
+              <button className={relationTab === "followers" ? "active" : ""} type="button" onClick={() => loadRelations("followers")}>
+                {profile.follower_count} 粉丝
+              </button>
+              <button className={relationTab === "following" ? "active" : ""} type="button" onClick={() => loadRelations("following")}>
+                {profile.following_count} 关注
+              </button>
             </div>
             {token && currentUser?.id !== profile.id && (
               <button type="button" onClick={toggleFollow} disabled={loading}>
@@ -692,9 +1004,39 @@ function ProfilePage({
               </button>
             )}
           </article>
-          <div className="profile-posts">
-            {posts.map((post) => <PostCard key={post.id} post={post} active={false} onOpen={() => undefined} />)}
-            {posts.length === 0 && <p className="empty-signal">这个用户暂时没有公开帖子。</p>}
+          <div className="profile-workspace">
+            <div className="profile-posts">
+              {relationTab === "posts" && (
+                <>
+                  {posts.map((post) => (
+                    <PostCard
+                      key={post.id}
+                      post={post}
+                      active={selectedPost?.id === post.id}
+                      onOpen={() => setSelectedPost(post)}
+                    />
+                  ))}
+                  {posts.length === 0 && <p className="empty-signal">这个用户暂时没有公开帖子。</p>}
+                </>
+              )}
+              {relationTab !== "posts" && (
+                <RelationList
+                  title={relationTab === "followers" ? "粉丝列表" : "关注列表"}
+                  list={relations}
+                  onOpenUser={(id) => navigate(`/profile/${id}`)}
+                />
+              )}
+            </div>
+            <PostDetailPanel
+              post={selectedPost}
+              token={token}
+              onNotice={onNotice}
+              onPostChanged={(next) => {
+                setSelectedPost(next);
+                setPosts((items) => items.map((item) => (item.id === next.id ? next : item)));
+              }}
+              onOpenUser={(id) => navigate(`/profile/${id}`)}
+            />
           </div>
         </div>
       ) : (
@@ -719,7 +1061,10 @@ function ProfilePage({
       const [user, list] = await Promise.all([api.publicUser(id), api.listUserPosts(id, 1, 10)]);
       setProfile(user);
       setPosts(list.items);
+      setSelectedPost(list.items[0] ?? null);
       setInput(String(user.id));
+      setRelationTab("posts");
+      setRelations(null);
       if (token && currentUser?.id !== user.id) {
         const status = await api.userFollowed(user.id, token);
         setFollowed(status.followed);
@@ -731,6 +1076,31 @@ function ProfilePage({
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadRelations(kind: "followers" | "following") {
+    if (!profile) {
+      return;
+    }
+    setRelationTab(kind);
+    setLoading(true);
+    try {
+      const result = kind === "followers"
+        ? await api.listFollowers(profile.id, 1, 20)
+        : await api.listFollowing(profile.id, 1, 20);
+      setRelations(result);
+      setSelectedPost(null);
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "用户关系列表加载失败。") });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function showProfilePosts() {
+    setRelationTab("posts");
+    setRelations(null);
+    setSelectedPost((current) => current ?? posts[0] ?? null);
   }
 
   async function toggleFollow() {
@@ -749,6 +1119,41 @@ function ProfilePage({
       setLoading(false);
     }
   }
+}
+
+function RelationList({
+  title,
+  list,
+  onOpenUser
+}: {
+  title: string;
+  list: PublicUserList | null;
+  onOpenUser: (userID: number) => void;
+}) {
+  return (
+    <section className="relation-panel">
+      <div className="section-title">
+        <strong>{title}</strong>
+        <span>{list?.total ?? 0} 人</span>
+      </div>
+      {!list || list.items.length === 0 ? (
+        <p className="empty-signal compact">这里暂时没有用户。</p>
+      ) : (
+        <div className="relation-list">
+          {list.items.map((user) => (
+            <button className="relation-user" type="button" key={user.id} onClick={() => onOpenUser(user.id)}>
+              <span className="avatar mini">{initials(user)}</span>
+              <span>
+                <strong>{user.nickname || user.username}</strong>
+                <small>@{user.username}</small>
+              </span>
+              <em>{user.follower_count} 粉丝</em>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function LabPage({
@@ -906,7 +1311,9 @@ function PostCard({ post, active, onOpen }: { post: Post; active: boolean; onOpe
       <div className="post-meta">
         <span>@{post.author.username}</span>
         <span>{post.like_count} 赞</span>
+        <span>{post.collect_count} 收藏</span>
         <span>{post.comment_count} 评论</span>
+        <span>热度 {Math.round(post.hot_score)}</span>
       </div>
     </button>
   );
@@ -955,6 +1362,13 @@ function formatTime(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function normalizePostHotScore(post: Post): Post {
+  return {
+    ...post,
+    hot_score: post.like_count * 3 + post.collect_count * 5 + post.comment_count * 4
+  };
 }
 
 function formatError(error: unknown, fallback: string) {

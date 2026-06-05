@@ -144,6 +144,22 @@ go run ./cmd/seed-demo
 
 脚本采用幂等更新策略，不清空全库；重复运行只会补齐演示数据并重新计算相关计数。
 
+## VPS 公网部署
+
+如果要把 FeedLab 部署到服务器，方便面试官或 HR 直接访问，可以使用仓库里的生产 Docker Compose：
+
+[FeedLab VPS 部署指南](./docs/feedlab-vps-deployment.md)
+
+当前部署方案会启动：
+
+- `feedlab-web`：Caddy 托管 React 前端，并反向代理 API、Swagger 和上传文件。
+- `feedlab-api`：Go + Gin 后端服务。
+- `mysql`：业务数据。
+- `redis`：缓存、热门榜、浏览量和限流。
+- `rabbitmq`：异步通知队列。
+
+公网只需要开放 `80` 端口；MySQL、Redis 和 RabbitMQ 保持在 Docker 内部网络，不直接暴露到公网。
+
 ## 媒体帖子模块
 
 FeedLab 现在支持四类帖子：

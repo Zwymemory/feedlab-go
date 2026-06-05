@@ -1,0 +1,101 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: feedlab-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${FEEDLAB_MYSQL_DATABASE:-feedlab}
+      MYSQL_USER: ${FEEDLAB_MYSQL_USER:-feedlab}
+      MYSQL_PASSWORD: ${FEEDLAB_MYSQL_PASSWORD}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: feedlab-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: feedlab-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-feedlab}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      TZ: Asia/Shanghai
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: feedlab-api:latest
+    container_name: feedlab-api
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      FEEDLAB_SERVER_MODE: release
+      FEEDLAB_MYSQL_HOST: mysql
+      FEEDLAB_MYSQL_PORT: 3306
+      FEEDLAB_MYSQL_USER: ${FEEDLAB_MYSQL_USER:-feedlab}
+      FEEDLAB_MYSQL_PASSWORD: ${FEEDLAB_MYSQL_PASSWORD}
+      FEEDLAB_MYSQL_DATABASE: ${FEEDLAB_MYSQL_DATABASE:-feedlab}
+      FEEDLAB_REDIS_ADDR: redis:6379
+      FEEDLAB_RABBITMQ_ENABLED: "true"
+      FEEDLAB_RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-feedlab}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
+      FEEDLAB_NOTIFICATION_QUEUE: notification.queue
+      FEEDLAB_JWT_SECRET: ${FEEDLAB_JWT_SECRET}
+      FEEDLAB_JWT_ISSUER: feedlab
+      FEEDLAB_JWT_EXPIRES_HOURS: 24
+      FEEDLAB_LOG_LEVEL: info
+    volumes:
+      - uploads_data:/app/uploads
+
+  web:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    image: feedlab-web:latest
+    container_name: feedlab-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${FEEDLAB_HTTP_PORT:-80}:80"
+
+volumes:
+  mysql_data:
+  redis_data:
+  rabbitmq_data:
+  uploads_data:

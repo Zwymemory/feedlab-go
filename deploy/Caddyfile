@@ -2,22 +2,26 @@
 	root * /srv
 	encode gzip zstd
 
-	handle /api/* {
-		reverse_proxy feedlab-api:8080
-	}
+	route {
+		handle /api/* {
+			reverse_proxy feedlab-api:8080
+		}
 
-	handle /healthz {
-		reverse_proxy feedlab-api:8080
-	}
+		handle /healthz {
+			reverse_proxy feedlab-api:8080
+		}
 
-	handle /swagger* {
-		reverse_proxy feedlab-api:8080
-	}
+		handle /swagger* {
+			reverse_proxy feedlab-api:8080
+		}
 
-	handle /uploads/* {
-		reverse_proxy feedlab-api:8080
-	}
+		handle /uploads/* {
+			reverse_proxy feedlab-api:8080
+		}
 
-	try_files {path} /index.html
-	file_server
+		handle {
+			try_files {path} /index.html
+			file_server
+		}
+	}
 }

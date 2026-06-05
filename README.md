@@ -144,6 +144,15 @@ go run ./cmd/seed-demo
 
 脚本采用幂等更新策略，不清空全库；重复运行只会补齐演示数据并重新计算相关计数。
 
+如果是部署给 HR 或面试官看的公开演示环境，建议先整理旧测试数据：
+
+```bash
+cd /Users/zwy/Documents/Build_My_Vps-Go/backend
+FEEDLAB_SEED_RESET=1 go run ./cmd/seed-demo
+```
+
+`FEEDLAB_SEED_RESET=1` 会清空帖子、评论、点赞、收藏、关注、通知和相关 Redis 缓存，再生成一批展示友好的固定内容。当前内容偏“动漫/B站/技术学习/项目展示”风格，评论和互动会由 Alice、Mer_src、V4 Demo 三个账号自然产生，适合公开演示。
+
 ## VPS 公网部署
 
 如果要把 FeedLab 部署到服务器，方便面试官或 HR 直接访问，可以使用仓库里的生产 Docker Compose：

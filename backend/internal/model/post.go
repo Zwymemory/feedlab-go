@@ -23,4 +23,5 @@ type Post struct {
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 	User         User           `gorm:"foreignKey:UserID" json:"-"`
+	Media        []PostMedia    `gorm:"foreignKey:PostID" json:"media"`
 }

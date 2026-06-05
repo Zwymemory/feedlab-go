@@ -30,9 +30,21 @@ func (r *PostRepository) Create(ctx context.Context, post *model.Post) error {
 	return r.db.WithContext(ctx).Create(post).Error
 }
 
+func (r *PostRepository) CreateMedia(ctx context.Context, media []model.PostMedia) error {
+	if len(media) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Create(&media).Error
+}
+
 func (r *PostRepository) FindByID(ctx context.Context, id uint64) (*model.Post, error) {
 	var post model.Post
-	err := r.db.WithContext(ctx).Preload("User").First(&post, id).Error
+	err := r.db.WithContext(ctx).
+		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
+		First(&post, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrNotFound
 	}
@@ -46,6 +58,9 @@ func (r *PostRepository) FindPublishedByID(ctx context.Context, id uint64) (*mod
 	var post model.Post
 	err := r.db.WithContext(ctx).
 		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
 		Where("status = ?", "published").
 		First(&post, id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -68,6 +83,9 @@ func (r *PostRepository) ListPublished(ctx context.Context, page int, pageSize i
 	offset := (page - 1) * pageSize
 	err := query.
 		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
 		Order("created_at DESC").
 		Order("id DESC").
 		Limit(pageSize).
@@ -82,6 +100,9 @@ func (r *PostRepository) ListPublished(ctx context.Context, page int, pageSize i
 func (r *PostRepository) ListFeedPublished(ctx context.Context, cursorTime *time.Time, cursorID uint64, limit int) ([]model.Post, error) {
 	query := r.db.WithContext(ctx).
 		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
 		Where("status = ?", "published")
 	if cursorTime != nil && cursorID > 0 {
 		query = query.Where("created_at < ? OR (created_at = ? AND id < ?)", *cursorTime, *cursorTime, cursorID)
@@ -103,6 +124,9 @@ func (r *PostRepository) ListHotPublished(ctx context.Context, limit int) ([]mod
 	var posts []model.Post
 	err := r.db.WithContext(ctx).
 		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
 		Where("status = ?", "published").
 		Order("hot_score DESC").
 		Order("like_count DESC").
@@ -125,6 +149,9 @@ func (r *PostRepository) FindPublishedByIDs(ctx context.Context, ids []uint64) (
 	var posts []model.Post
 	err := r.db.WithContext(ctx).
 		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
 		Where("id IN ? AND status = ?", ids, "published").
 		Find(&posts).Error
 	if err != nil {
@@ -146,6 +173,9 @@ func (r *PostRepository) ListPublishedByUser(ctx context.Context, userID uint64,
 	offset := (page - 1) * pageSize
 	err := query.
 		Preload("User").
+		Preload("Media", func(db *gorm.DB) *gorm.DB {
+			return db.Order("sort_order ASC").Order("id ASC")
+		}).
 		Order("created_at DESC").
 		Order("id DESC").
 		Limit(pageSize).

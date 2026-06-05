@@ -12,7 +12,8 @@ export default defineConfig(({ mode }) => {
       port: 5174,
       proxy: {
         "/api": proxyTarget,
-        "/healthz": proxyTarget
+        "/healthz": proxyTarget,
+        "/uploads": proxyTarget
       }
     },
     preview: {

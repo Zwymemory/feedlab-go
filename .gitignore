@@ -16,6 +16,7 @@ coverage.out
 # Runtime files
 logs/
 tmp/
+backend/uploads/
 
 # Frontend
 node_modules/

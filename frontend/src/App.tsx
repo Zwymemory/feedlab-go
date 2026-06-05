@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import gsap from "gsap";
 import { api, ApiError, tokenStore } from "./api/client";
@@ -9,6 +9,7 @@ import type {
   LoginPayload,
   NotificationItem,
   Post,
+  PostMedia,
   PublicUser,
   PublicUserList,
   User
@@ -43,7 +44,8 @@ const emptyPostForm: CreatePostPayload = {
   content: "",
   cover_url: "",
   content_type: "article",
-  status: "published"
+  status: "published",
+  media: []
 };
 
 function App() {
@@ -316,6 +318,7 @@ function FeedPage({
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [form, setForm] = useState<CreatePostPayload>(emptyPostForm);
   const [cursor, setCursor] = useState("");
   const [hasMore, setHasMore] = useState(false);
@@ -351,6 +354,40 @@ function FeedPage({
         </div>
         <input value={form.title} placeholder="给这条信号起一个标题" maxLength={120} onChange={(event) => setForm({ ...form, title: event.target.value })} />
         <textarea value={form.content} placeholder="写下你的帖子内容，发布后会进入 Feed。" onChange={(event) => setForm({ ...form, content: event.target.value })} />
+        <div className="media-uploader">
+          <div>
+            <strong>{describeComposerType(form.media)}</strong>
+            <span>支持 jpg/png/webp/gif、mp4/webm/mov。图片 5MB 内，视频 50MB 内。</span>
+          </div>
+          <label className={`media-pick ${!token || uploading ? "disabled" : ""}`}>
+            {uploading ? "上传中..." : "选择图片/视频"}
+            <input
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+              disabled={!token || uploading}
+              onChange={uploadMediaFiles}
+            />
+          </label>
+        </div>
+        {form.media.length > 0 && (
+          <div className="media-preview-grid" aria-label="待发布媒体">
+            {form.media.map((item, index) => (
+              <article className="media-preview" key={`${item.url}-${index}`}>
+                {item.media_type === "image" ? (
+                  <img src={item.url} alt={item.original_name || `media-${index + 1}`} />
+                ) : (
+                  <video src={item.url} muted playsInline />
+                )}
+                <div>
+                  <strong>{item.media_type === "image" ? "图片" : "视频"}</strong>
+                  <span>{item.original_name || item.url}</span>
+                </div>
+                <button type="button" onClick={() => removeMedia(index)}>移除</button>
+              </article>
+            ))}
+          </div>
+        )}
       </form>
 
       {mode === "hot" && (
@@ -378,11 +415,12 @@ function FeedPage({
         </div>
 
         <PostDetailPanel
+          key={`feed-detail-${selectedPost?.id ?? "empty"}`}
           post={selectedPost}
           token={token}
           onNotice={onNotice}
           onPostChanged={(next) => {
-            setSelectedPost(next);
+            setSelectedPost((current) => (current?.id === next.id ? next : current));
             setPosts((items) => items.map((item) => (item.id === next.id ? next : item)));
           }}
           onOpenUser={(id) => navigate(`/profile/${id}`)}
@@ -430,13 +468,23 @@ function FeedPage({
       onNotice({ type: "error", text: "请先登录，再发布帖子。" });
       return;
     }
-    if (!form.title.trim() || !form.content.trim()) {
-      onNotice({ type: "error", text: "标题和正文不能为空。" });
+    if (!form.title.trim()) {
+      onNotice({ type: "error", text: "标题不能为空。" });
+      return;
+    }
+    if (!form.content.trim() && form.media.length === 0) {
+      onNotice({ type: "error", text: "正文和媒体至少需要一个。" });
       return;
     }
     setCreating(true);
     try {
-      const created = await api.createPost({ ...form, status: "published" }, token);
+      const media = form.media.map((item, index) => ({ ...item, sort_order: index + 1 }));
+      const created = await api.createPost({
+        ...form,
+        status: "published",
+        content_type: derivePostContentType(media),
+        media
+      }, token);
       setForm(emptyPostForm);
       setPosts((items) => [created, ...items]);
       setSelectedPost(created);
@@ -447,6 +495,45 @@ function FeedPage({
     } finally {
       setCreating(false);
     }
+  }
+
+  async function uploadMediaFiles(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    if (!token || files.length === 0) {
+      return;
+    }
+    if (form.media.length + files.length > 12) {
+      onNotice({ type: "error", text: "单篇帖子最多上传 12 个媒体资源。" });
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(files.map((file) => api.uploadMedia(file, token)));
+      setForm((current) => ({
+        ...current,
+        media: [
+          ...current.media,
+          ...uploaded.map((item, offset) => ({
+            ...item,
+            sort_order: current.media.length + offset + 1
+          }))
+        ]
+      }));
+      onNotice({ type: "success", text: "媒体上传成功，发布帖子时会一起保存。" });
+    } catch (error) {
+      onNotice({ type: "error", text: formatError(error, "媒体上传失败。") });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function removeMedia(index: number) {
+    setForm((current) => ({
+      ...current,
+      media: current.media.filter((_, itemIndex) => itemIndex !== index)
+    }));
   }
 }
 
@@ -474,6 +561,8 @@ function PostDetailPanel({
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState<"detail" | "like" | "collect" | "comment" | `reply-${number}` | `comment-like-${number}` | null>(null);
   const actionGuardRef = useRef<Record<string, number>>({});
+  const detailRequestRef = useRef(0);
+  const commentsRequestRef = useRef(0);
 
   useEffect(() => {
     setDetail(post);
@@ -516,6 +605,7 @@ function PostDetailPanel({
         @{activePost.author.username}
       </button>
       <p className="detail-content">{activePost.content}</p>
+      <MediaGallery media={activePost.media ?? []} mode="detail" />
       <div className="stat-row">
         <span>{activePost.view_count} 浏览</span>
         <span>{activePost.like_count} 赞</span>
@@ -603,15 +693,25 @@ function PostDetailPanel({
   );
 
   async function loadPostDetail(postID: number) {
+    const requestID = detailRequestRef.current + 1;
+    detailRequestRef.current = requestID;
     setBusy("detail");
     try {
       const next = await api.postDetail(postID);
+      if (detailRequestRef.current !== requestID) {
+        return;
+      }
       setDetail(next);
       onPostChanged(next);
     } catch (error) {
+      if (detailRequestRef.current !== requestID) {
+        return;
+      }
       onNotice({ type: "error", text: formatError(error, "帖子详情加载失败。") });
     } finally {
-      setBusy(null);
+      if (detailRequestRef.current === requestID) {
+        setBusy(null);
+      }
     }
   }
 
@@ -638,11 +738,19 @@ function PostDetailPanel({
   }
 
   async function loadComments(postID: number) {
+    const requestID = commentsRequestRef.current + 1;
+    commentsRequestRef.current = requestID;
     try {
       const result = await api.listComments(postID, 1, 20);
+      if (commentsRequestRef.current !== requestID) {
+        return;
+      }
       setComments(result.items);
       await loadCommentLikeStatuses(result.items);
     } catch (error) {
+      if (commentsRequestRef.current !== requestID) {
+        return;
+      }
       onNotice({ type: "error", text: formatError(error, "评论加载失败。") });
     }
   }
@@ -1028,11 +1136,12 @@ function ProfilePage({
               )}
             </div>
             <PostDetailPanel
+              key={`profile-detail-${selectedPost?.id ?? "empty"}`}
               post={selectedPost}
               token={token}
               onNotice={onNotice}
               onPostChanged={(next) => {
-                setSelectedPost(next);
+                setSelectedPost((current) => (current?.id === next.id ? next : current));
                 setPosts((items) => items.map((item) => (item.id === next.id ? next : item)));
               }}
               onOpenUser={(id) => navigate(`/profile/${id}`)}
@@ -1303,11 +1412,29 @@ function SystemLine({ label, value }: { label: string; value?: string }) {
 }
 
 function PostCard({ post, active, onOpen }: { post: Post; active: boolean; onOpen: () => void }) {
+  const media = post.media ?? [];
   return (
-    <button className={`post-card stagger-in ${active ? "active" : ""}`} type="button" onClick={onOpen}>
+    <article
+      className={`post-card stagger-in ${active ? "active" : ""}`}
+      role="button"
+      tabIndex={0}
+      onPointerDown={(event) => {
+        if (event.button === 0) {
+          onOpen();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <span className="post-chip">#{post.id}</span>
+      <span className="post-type">{labelPostContentType(post.content_type, media.length)}</span>
       <h2>{post.title}</h2>
       <p>{post.content}</p>
+      <MediaGallery media={media} mode="card" />
       <div className="post-meta">
         <span>@{post.author.username}</span>
         <span>{post.like_count} 赞</span>
@@ -1315,7 +1442,34 @@ function PostCard({ post, active, onOpen }: { post: Post; active: boolean; onOpe
         <span>{post.comment_count} 评论</span>
         <span>热度 {Math.round(post.hot_score)}</span>
       </div>
-    </button>
+    </article>
+  );
+}
+
+function MediaGallery({ media, mode }: { media: PostMedia[]; mode: "card" | "detail" }) {
+  if (!media || media.length === 0) {
+    return null;
+  }
+  const visible = mode === "card" ? media.slice(0, 4) : media;
+  return (
+    <div className={`media-gallery ${mode}`}>
+      {visible.map((item, index) => (
+        <figure className={`media-tile ${item.media_type}`} key={`${item.url}-${index}`}>
+          {item.media_type === "image" ? (
+            <img src={item.url} alt={item.original_name || `post-media-${index + 1}`} loading="lazy" />
+          ) : mode === "card" ? (
+            <div className="video-placeholder">
+              <span>VIDEO</span>
+            </div>
+          ) : (
+            <video src={item.url} controls playsInline preload="metadata" />
+          )}
+          {mode === "card" && index === visible.length - 1 && media.length > visible.length && (
+            <figcaption>+{media.length - visible.length}</figcaption>
+          )}
+        </figure>
+      ))}
+    </div>
   );
 }
 
@@ -1369,6 +1523,39 @@ function normalizePostHotScore(post: Post): Post {
     ...post,
     hot_score: post.like_count * 3 + post.collect_count * 5 + post.comment_count * 4
   };
+}
+
+function derivePostContentType(media: PostMedia[]): CreatePostPayload["content_type"] {
+  if (media.length === 0) {
+    return "article";
+  }
+  const hasImage = media.some((item) => item.media_type === "image");
+  const hasVideo = media.some((item) => item.media_type === "video");
+  if (hasImage && hasVideo) {
+    return "mixed";
+  }
+  return hasVideo ? "video" : "image";
+}
+
+function describeComposerType(media: PostMedia[]) {
+  const type = derivePostContentType(media);
+  const labels: Record<CreatePostPayload["content_type"], string> = {
+    article: "纯文本帖子",
+    image: "图文帖子",
+    video: "视频帖子",
+    mixed: "复合型帖子"
+  };
+  return `${labels[type]} · ${media.length} 个媒体`;
+}
+
+function labelPostContentType(type: Post["content_type"], mediaCount: number) {
+  const labels: Record<Post["content_type"], string> = {
+    article: "Article",
+    image: "Image",
+    video: "Video",
+    mixed: "Mixed"
+  };
+  return mediaCount > 0 ? `${labels[type]} · ${mediaCount}` : labels[type];
 }
 
 function formatError(error: unknown, fallback: string) {

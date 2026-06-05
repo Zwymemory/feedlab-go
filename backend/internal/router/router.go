@@ -71,6 +71,7 @@ func New(deps Dependencies) *gin.Engine {
 	userService := service.NewUserService(userRepository, userCache)
 	postService := service.NewPostService(postRepository, userRepository, postCache, userCache, hotPostCache, postViewCache, int64(deps.Config.Redis.PostViewFlushThreshold))
 	notificationService := service.NewNotificationService(notificationRepository, userRepository)
+	uploadService := service.NewUploadService("uploads")
 	likeService := service.NewLikeService(postLikeRepository, postRepository, userRepository, postCache, hotPostCache, notificationPublisher)
 	collectService := service.NewCollectService(postCollectRepository, postRepository, userRepository, postCache, hotPostCache, notificationPublisher)
 	followService := service.NewFollowService(userFollowRepository, userRepository, userCache, notificationPublisher)
@@ -85,6 +86,7 @@ func New(deps Dependencies) *gin.Engine {
 	commentController := controller.NewCommentController(commentService)
 	commentLikeController := controller.NewCommentLikeController(commentLikeService)
 	notificationController := controller.NewNotificationController(notificationService)
+	uploadController := controller.NewUploadController(uploadService)
 	authMiddleware := middleware.NewAuthMiddleware(tokenManager)
 	loginRateLimiter := middleware.NewRateLimiter(
 		deps.Redis,
@@ -93,6 +95,7 @@ func New(deps Dependencies) *gin.Engine {
 	)
 
 	engine.GET("/healthz", healthController.Health)
+	engine.Static("/uploads", "uploads")
 	swagger.RegisterRoutes(engine)
 
 	api := engine.Group("/api/v1")
@@ -117,6 +120,10 @@ func New(deps Dependencies) *gin.Engine {
 
 	feed := api.Group("/feed")
 	feed.GET("/posts", postController.Feed)
+
+	uploads := api.Group("/uploads")
+	uploads.Use(authMiddleware.RequireAuth())
+	uploads.POST("/media", uploadController.UploadMedia)
 
 	posts := api.Group("/posts")
 	posts.GET("", postController.List)

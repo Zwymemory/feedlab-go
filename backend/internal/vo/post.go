@@ -14,21 +14,34 @@ type Author struct {
 }
 
 type Post struct {
+	ID           uint64      `json:"id"`
+	UserID       uint64      `json:"user_id"`
+	Title        string      `json:"title"`
+	Content      string      `json:"content"`
+	CoverURL     string      `json:"cover_url"`
+	ContentType  string      `json:"content_type"`
+	Status       string      `json:"status"`
+	ViewCount    int64       `json:"view_count"`
+	LikeCount    int64       `json:"like_count"`
+	CommentCount int64       `json:"comment_count"`
+	CollectCount int64       `json:"collect_count"`
+	HotScore     float64     `json:"hot_score"`
+	CreatedAt    time.Time   `json:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at"`
+	Author       Author      `json:"author"`
+	Media        []PostMedia `json:"media"`
+}
+
+type PostMedia struct {
 	ID           uint64    `json:"id"`
-	UserID       uint64    `json:"user_id"`
-	Title        string    `json:"title"`
-	Content      string    `json:"content"`
-	CoverURL     string    `json:"cover_url"`
-	ContentType  string    `json:"content_type"`
-	Status       string    `json:"status"`
-	ViewCount    int64     `json:"view_count"`
-	LikeCount    int64     `json:"like_count"`
-	CommentCount int64     `json:"comment_count"`
-	CollectCount int64     `json:"collect_count"`
-	HotScore     float64   `json:"hot_score"`
+	PostID       uint64    `json:"post_id"`
+	MediaType    string    `json:"media_type"`
+	URL          string    `json:"url"`
+	OriginalName string    `json:"original_name"`
+	MimeType     string    `json:"mime_type"`
+	SizeBytes    int64     `json:"size_bytes"`
+	SortOrder    int       `json:"sort_order"`
 	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	Author       Author    `json:"author"`
 }
 
 type PostList struct {
@@ -79,6 +92,7 @@ func NewPost(post model.Post) Post {
 			Nickname:  post.User.Nickname,
 			AvatarURL: post.User.AvatarURL,
 		},
+		Media: NewPostMediaList(post.Media),
 	}
 }
 
@@ -86,6 +100,28 @@ func NewPosts(posts []model.Post) []Post {
 	items := make([]Post, 0, len(posts))
 	for _, post := range posts {
 		items = append(items, NewPost(post))
+	}
+	return items
+}
+
+func NewPostMedia(media model.PostMedia) PostMedia {
+	return PostMedia{
+		ID:           media.ID,
+		PostID:       media.PostID,
+		MediaType:    media.MediaType,
+		URL:          media.URL,
+		OriginalName: media.OriginalName,
+		MimeType:     media.MimeType,
+		SizeBytes:    media.SizeBytes,
+		SortOrder:    media.SortOrder,
+		CreatedAt:    media.CreatedAt,
+	}
+}
+
+func NewPostMediaList(media []model.PostMedia) []PostMedia {
+	items := make([]PostMedia, 0, len(media))
+	for _, item := range media {
+		items = append(items, NewPostMedia(item))
 	}
 	return items
 }

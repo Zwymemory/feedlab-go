@@ -54,7 +54,7 @@ export type Post = {
   title: string;
   content: string;
   cover_url: string;
-  content_type: "article" | "image" | "video";
+  content_type: "article" | "image" | "video" | "mixed";
   status: "draft" | "published";
   view_count: number;
   like_count: number;
@@ -64,7 +64,21 @@ export type Post = {
   created_at: string;
   updated_at: string;
   author: Author;
+  media: PostMedia[];
 };
+
+export type PostMedia = {
+  id?: number;
+  post_id?: number;
+  media_type: "image" | "video";
+  url: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  sort_order: number;
+};
+
+export type UploadedMedia = Omit<PostMedia, "id" | "post_id" | "sort_order">;
 
 export type PostList = {
   items: Post[];
@@ -133,8 +147,9 @@ export type CreatePostPayload = {
   title: string;
   content: string;
   cover_url: string;
-  content_type: "article";
+  content_type: "article" | "image" | "video" | "mixed";
   status: "draft" | "published";
+  media: PostMedia[];
 };
 
 export type LoginResult = {

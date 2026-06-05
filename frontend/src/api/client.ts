@@ -20,6 +20,7 @@ import type {
   PublicUser,
   PublicUserList,
   RegisterPayload,
+  UploadedMedia,
   UnreadNotificationCount,
   User
 } from "../types";
@@ -61,6 +62,33 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     method: options.method ?? "GET",
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
+  });
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const payload = contentType.includes("application/json")
+    ? ((await response.json()) as ApiResponse<T>)
+    : null;
+
+  if (!response.ok || !payload || payload.code !== 0) {
+    throw new ApiError(
+      payload?.message ?? `Request failed with status ${response.status}`,
+      response.status,
+      payload?.code
+    );
+  }
+
+  return payload.data;
+}
+
+async function upload<T>(path: string, formData: FormData, token: string): Promise<T> {
+  const headers = new Headers();
+  headers.set("Accept", "application/json");
+  headers.set("Authorization", `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData
   });
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -188,6 +216,11 @@ export const api = {
       body: payload,
       token
     });
+  },
+  uploadMedia(file: File, token: string) {
+    const formData = new FormData();
+    formData.set("file", file);
+    return upload<UploadedMedia>("/api/v1/uploads/media", formData, token);
   },
   postDetail(postID: number) {
     return request<Post>(`/api/v1/posts/${postID}`);

@@ -38,33 +38,45 @@ func NewPostService(posts *repository.PostRepository, users *repository.UserRepo
 func (s *PostService) Create(ctx context.Context, userID uint64, req dto.CreatePostRequest) (*vo.Post, error) {
 	title := strings.TrimSpace(req.Title)
 	content := strings.TrimSpace(req.Content)
-	if title == "" || content == "" {
+	media, err := normalizePostMedia(req.Media)
+	if err != nil {
+		return nil, err
+	}
+	if title == "" || (content == "" && len(media) == 0) {
 		return nil, ErrBadRequest
 	}
 
-	contentType := strings.TrimSpace(req.ContentType)
-	if contentType == "" {
-		contentType = "article"
-	}
+	contentType := derivePostContentType(media)
 	status := strings.TrimSpace(req.Status)
 	if status == "" {
 		status = "published"
+	}
+
+	coverURL := strings.TrimSpace(req.CoverURL)
+	if coverURL == "" && len(media) > 0 {
+		coverURL = media[0].URL
 	}
 
 	post := model.Post{
 		UserID:      userID,
 		Title:       title,
 		Content:     content,
-		CoverURL:    strings.TrimSpace(req.CoverURL),
+		CoverURL:    coverURL,
 		ContentType: contentType,
 		Status:      status,
 	}
 
-	err := s.posts.Transaction(ctx, func(tx *gorm.DB) error {
+	err = s.posts.Transaction(ctx, func(tx *gorm.DB) error {
 		txPosts := s.posts.WithTx(tx)
 		txUsers := s.users.WithTx(tx)
 
 		if err := txPosts.Create(ctx, &post); err != nil {
+			return err
+		}
+		for i := range media {
+			media[i].PostID = post.ID
+		}
+		if err := txPosts.CreateMedia(ctx, media); err != nil {
 			return err
 		}
 		if post.Status == "published" {
@@ -335,6 +347,58 @@ func (s *PostService) applyViewCount(ctx context.Context, post *vo.Post) {
 		return
 	}
 	_ = s.postCache.Delete(ctx, post.ID)
+}
+
+func normalizePostMedia(items []dto.PostMediaRequest) ([]model.PostMedia, error) {
+	if len(items) > 12 {
+		return nil, ErrBadRequest
+	}
+
+	media := make([]model.PostMedia, 0, len(items))
+	for index, item := range items {
+		mediaType := strings.TrimSpace(item.MediaType)
+		url := strings.TrimSpace(item.URL)
+		if url == "" || (mediaType != "image" && mediaType != "video") {
+			return nil, ErrBadRequest
+		}
+		if !strings.HasPrefix(url, "/uploads/") && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			return nil, ErrBadRequest
+		}
+
+		sortOrder := item.SortOrder
+		if sortOrder == 0 {
+			sortOrder = index + 1
+		}
+		media = append(media, model.PostMedia{
+			MediaType:    mediaType,
+			URL:          url,
+			OriginalName: strings.TrimSpace(item.OriginalName),
+			MimeType:     strings.TrimSpace(item.MimeType),
+			SizeBytes:    item.SizeBytes,
+			SortOrder:    sortOrder,
+		})
+	}
+	return media, nil
+}
+
+func derivePostContentType(media []model.PostMedia) string {
+	if len(media) == 0 {
+		return "article"
+	}
+
+	hasImage := false
+	hasVideo := false
+	for _, item := range media {
+		hasImage = hasImage || item.MediaType == "image"
+		hasVideo = hasVideo || item.MediaType == "video"
+	}
+	if hasImage && hasVideo {
+		return "mixed"
+	}
+	if hasVideo {
+		return "video"
+	}
+	return "image"
 }
 
 func encodeFeedCursor(post model.Post) string {

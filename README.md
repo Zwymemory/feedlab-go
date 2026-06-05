@@ -26,6 +26,7 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 - V4 模块 1：RabbitMQ 通知队列、通知事件生产者和通知 Worker。
 - V4 模块 2：通知列表、未读数、单条已读和全部已读。
 - V5 模块 1：路由化展示前端、GSAP 动效、Feed 流、通知中心和演示驾驶舱。
+- 媒体帖子模块：本地上传图片/视频，支持纯文本、图文、视频和图文视频复合型帖子。
 
 ## 为什么这样设计
 
@@ -37,6 +38,7 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 - Redis 当前已用于帖子详情缓存、用户公开资料缓存、热门排行榜和浏览量增量计数；V2 互动模块仍使用 MySQL 事务维护关系和核心计数。
 - V4 已接入 RabbitMQ：点赞、收藏、评论、评论点赞、关注会异步生产通知消息，由 Worker 消费后写入 `notifications` 表。
 - V5 前端使用 React Router + GSAP，把总览、Feed、通知、用户主页和系统驾驶舱拆成独立展示路由。
+- 媒体文件通过登录上传接口保存到本地 `backend/uploads/`，数据库只保存 URL 和元数据；这避免把大文件塞进 MySQL，也更接近后续迁移 OSS/S3 的真实方案。
 
 ## 当前项目结构
 
@@ -70,6 +72,12 @@ FeedLab 是一个面向 Go 后端实习展示的内容社区系统。当前按�
 ```
 
 ## V1 架构源码导读
+
+如果你想系统准备 Go 后端求职，把八股、算法、项目讲法和大厂高频题放在一处复习，可以阅读：
+
+[Go 后端求职复习手册：八股、算法、项目与大厂面试题](./docs/go-backend-interview-handbook.md)
+
+这份文档适合手机碎片化阅读，内容覆盖 Go、MySQL、Redis、MQ、操作系统、网络、分布式、算法题型、场景题、字节/腾讯/阿里等公开面经高频方向，以及当前 FeedLab 项目的面试表达。
 
 如果你准备把 FeedLab 作为实习项目讲给面试官，建议先阅读：
 
@@ -135,6 +143,99 @@ go run ./cmd/seed-demo
 | V4 Demo | `v4demo@example.com` | `secret123` | 辅助制造关注、点赞和回复数据 |
 
 脚本采用幂等更新策略，不清空全库；重复运行只会补齐演示数据并重新计算相关计数。
+
+## 媒体帖子模块
+
+FeedLab 现在支持四类帖子：
+
+- `article`：只有标题和正文，没有媒体。
+- `image`：正文可选，媒体数组里只有图片。
+- `video`：正文可选，媒体数组里只有视频。
+- `mixed`：正文 + 图片 + 视频的复合型帖子。
+
+### 为什么这样设计
+
+- 文件上传和发帖拆成两步：先 `POST /api/v1/uploads/media` 上传文件拿到 URL，再 `POST /api/v1/posts` 携带 `media` 数组创建帖子。这样接口职责更清楚，也方便前端先预览、删除待发布媒体。
+- MySQL 不直接保存图片/视频二进制，只保存 URL、MIME、大小和排序等元数据。大文件直接塞 MySQL 会让数据库膨胀、备份变慢、查询压力变大。
+- 当前使用本地 `backend/uploads/YYYY/MM` 目录，适合本地和 VPS 展示；真实生产环境可以把保存逻辑替换成 OSS/S3/CDN，帖子表结构基本不用变。
+- 发帖时创建 `posts`、批量创建 `post_media`、维护 `users.post_count` 都在 Service 层事务中完成，避免帖子创建成功但媒体关系或发帖数不一致。
+
+### POST /api/v1/uploads/media
+
+用途：登录用户上传单个图片或视频文件，返回媒体元数据。
+
+限制：
+
+- 图片：`jpg/jpeg/png/webp/gif`，单文件最大 5MB。
+- 视频：`mp4/webm/mov`，单文件最大 50MB。
+- 非法类型或超出大小返回 `40000`。
+
+测试：
+
+```bash
+TOKEN="登录返回的 access_token"
+
+curl -X POST http://localhost:8080/api/v1/uploads/media \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -F "file=@/Users/zwy/Pictures/demo.jpg"
+```
+
+成功后会返回：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "media_type": "image",
+    "url": "/uploads/2026/06/xxxx.jpg",
+    "original_name": "demo.jpg",
+    "mime_type": "image/jpeg",
+    "size_bytes": 123456
+  }
+}
+```
+
+浏览器访问 `http://localhost:8080/uploads/2026/06/xxxx.jpg` 可以直接看到上传文件。
+
+### POST /api/v1/posts 创建 mixed 帖子
+
+测试：
+
+```bash
+TOKEN="登录返回的 access_token"
+IMAGE_URL="/uploads/2026/06/xxxx.jpg"
+VIDEO_URL="/uploads/2026/06/yyyy.mp4"
+
+curl -X POST http://localhost:8080/api/v1/posts \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"title\": \"FeedLab 图文视频混合帖\",
+    \"content\": \"正文仍然是文本，图片和视频通过 media 数组表达。\",
+    \"status\": \"published\",
+    \"media\": [
+      {
+        \"media_type\": \"image\",
+        \"url\": \"${IMAGE_URL}\",
+        \"original_name\": \"demo.jpg\",
+        \"mime_type\": \"image/jpeg\",
+        \"size_bytes\": 123456,
+        \"sort_order\": 1
+      },
+      {
+        \"media_type\": \"video\",
+        \"url\": \"${VIDEO_URL}\",
+        \"original_name\": \"demo.mp4\",
+        \"mime_type\": \"video/mp4\",
+        \"size_bytes\": 1234567,
+        \"sort_order\": 2
+      }
+    ]
+  }"
+```
+
+预期：返回 `201`，`data.content_type = mixed`，`data.media` 包含图片和视频。列表、详情、热门 Feed、游标 Feed 和用户公开帖子列表都会返回媒体数组。
 
 ## 本地启动
 
@@ -1364,9 +1465,9 @@ V3 已经覆盖了内容社区后端常见的 Redis 能力：
 | id | 帖子主键，自增 ID |
 | user_id | 作者用户 ID，关联 `users.id` |
 | title | 帖子标题，最长 120 字符 |
-| content | 帖子正文，V1 使用文本内容 |
-| cover_url | 封面图地址，V1 可为空 |
-| content_type | 内容类型，当前支持 `article`、`image`、`video`，V1 默认 `article` |
+| content | 帖子正文，纯媒体帖可为空 |
+| cover_url | 封面图地址；如果发帖时为空且有媒体，后端会默认取第一个媒体 URL |
+| content_type | 内容类型，当前支持 `article`、`image`、`video`、`mixed` |
 | status | 帖子状态，当前支持 `draft`、`published`，公开列表只展示 `published` |
 | view_count | 浏览数，V3 浏览量计数模块批量维护 |
 | like_count | 点赞数，点赞模块维护 |
@@ -1376,6 +1477,24 @@ V3 已经覆盖了内容社区后端常见的 Redis 能力：
 | created_at | 创建时间，列表按它倒序 |
 | updated_at | 更新时间 |
 | deleted_at | 软删除时间，GORM 用它过滤已删除帖子 |
+
+### post_media
+
+`post_media` 表由 GORM AutoMigrate 创建，用于记录一篇帖子挂载的图片和视频资源。
+
+| 字段 | 含义 |
+|---|---|
+| id | 媒体资源主键，自增 ID |
+| post_id | 所属帖子 ID，关联 `posts.id` |
+| media_type | 媒体类型，当前支持 `image` 和 `video` |
+| url | 媒体公开访问地址，例如 `/uploads/2026/06/xxx.jpg` |
+| original_name | 上传时的原始文件名，用于展示和排查 |
+| mime_type | 文件 MIME 类型，例如 `image/jpeg`、`video/mp4` |
+| size_bytes | 文件大小，单位字节 |
+| sort_order | 帖子内展示顺序，数字越小越靠前 |
+| created_at | 创建时间 |
+
+这张表不存文件二进制，只存文件元数据。真正文件保存在 `backend/uploads/`，并通过 `/uploads/*filepath` 静态路由公开访问。
 
 ### post_likes
 

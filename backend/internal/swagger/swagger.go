@@ -41,6 +41,7 @@ func spec() gin.H {
 			{"name": "auth", "description": "Register and login"},
 			{"name": "users", "description": "Current and public user APIs"},
 			{"name": "posts", "description": "Post publishing and reading"},
+			{"name": "uploads", "description": "Local image and video upload APIs"},
 			{"name": "feed", "description": "Cursor-based post feed"},
 			{"name": "likes", "description": "Post like interactions"},
 			{"name": "collects", "description": "Post collect interactions"},
@@ -95,13 +96,39 @@ func schemas() gin.H {
 		},
 		"CreatePostRequest": gin.H{
 			"type":     "object",
-			"required": []string{"title", "content"},
+			"required": []string{"title"},
 			"properties": gin.H{
 				"title":        gin.H{"type": "string", "maxLength": 120, "example": "FeedLab 第一篇帖子"},
 				"content":      gin.H{"type": "string", "example": "这是 V1 帖子模块创建的内容。"},
 				"cover_url":    gin.H{"type": "string", "example": ""},
-				"content_type": gin.H{"type": "string", "enum": []string{"article", "image", "video"}, "example": "article"},
+				"content_type": gin.H{"type": "string", "enum": []string{"article", "image", "video", "mixed"}, "example": "mixed"},
 				"status":       gin.H{"type": "string", "enum": []string{"draft", "published"}, "example": "published"},
+				"media": gin.H{
+					"type":  "array",
+					"items": schemaRef("PostMediaRequest"),
+				},
+			},
+		},
+		"PostMediaRequest": gin.H{
+			"type":     "object",
+			"required": []string{"media_type", "url"},
+			"properties": gin.H{
+				"media_type":    gin.H{"type": "string", "enum": []string{"image", "video"}, "example": "image"},
+				"url":           gin.H{"type": "string", "example": "/uploads/2026/06/example.jpg"},
+				"original_name": gin.H{"type": "string", "example": "cover.jpg"},
+				"mime_type":     gin.H{"type": "string", "example": "image/jpeg"},
+				"size_bytes":    gin.H{"type": "integer", "format": "int64", "example": 123456},
+				"sort_order":    gin.H{"type": "integer", "example": 1},
+			},
+		},
+		"UploadedMedia": gin.H{
+			"type": "object",
+			"properties": gin.H{
+				"media_type":    gin.H{"type": "string", "enum": []string{"image", "video"}, "example": "image"},
+				"url":           gin.H{"type": "string", "example": "/uploads/2026/06/example.jpg"},
+				"original_name": gin.H{"type": "string", "example": "cover.jpg"},
+				"mime_type":     gin.H{"type": "string", "example": "image/jpeg"},
+				"size_bytes":    gin.H{"type": "integer", "format": "int64", "example": 123456},
 			},
 		},
 		"CreateCommentRequest": gin.H{
@@ -136,6 +163,9 @@ func paths() gin.H {
 		},
 		"/api/v1/users/me": gin.H{
 			"get": operation("users", "Current user profile", "Return the current user profile from JWT context.", nil, nil, bearerSecurity(), responseMap("200", "success", "401", "invalid token")),
+		},
+		"/api/v1/uploads/media": gin.H{
+			"post": multipartUploadOperation(),
 		},
 		"/api/v1/users/{id}": gin.H{
 			"get": operationWithID("users", "Public user profile", "Return a public user profile without email, role or password fields.", nil, responseMap("200", "success", "400", "invalid id", "404", "not found")),
@@ -184,10 +214,20 @@ func paths() gin.H {
 			}),
 			"post": operation("posts", "Create post", "Create a post for the current user and update user post count in one transaction.", schemaRef("CreatePostRequest"), gin.H{
 				"title":        "FeedLab 第一篇帖子",
-				"content":      "这是 V1 帖子模块创建的内容。",
+				"content":      "这是正文。media 可以为空，也可以放上传接口返回的图片/视频。",
 				"cover_url":    "",
-				"content_type": "article",
+				"content_type": "mixed",
 				"status":       "published",
+				"media": []gin.H{
+					{
+						"media_type":    "image",
+						"url":           "/uploads/2026/06/example.jpg",
+						"original_name": "cover.jpg",
+						"mime_type":     "image/jpeg",
+						"size_bytes":    123456,
+						"sort_order":    1,
+					},
+				},
 			}, bearerSecurity(), responseMap("201", "created", "400", "invalid request", "401", "invalid token")),
 		},
 		"/api/v1/feed/posts": gin.H{
@@ -298,6 +338,33 @@ func operationWithParameters(tag string, summary string, description string, sec
 	op := operation(tag, summary, description, nil, nil, security, responses)
 	op["parameters"] = parameters
 	return op
+}
+
+func multipartUploadOperation() gin.H {
+	return gin.H{
+		"tags":        []string{"uploads"},
+		"summary":     "Upload post media",
+		"description": "Upload one local image or video file. Images support jpg/jpeg/png/webp/gif up to 5MB; videos support mp4/webm/mov up to 50MB.",
+		"security":    bearerSecurity(),
+		"requestBody": gin.H{
+			"required": true,
+			"content": gin.H{
+				"multipart/form-data": gin.H{
+					"schema": gin.H{
+						"type":     "object",
+						"required": []string{"file"},
+						"properties": gin.H{
+							"file": gin.H{
+								"type":   "string",
+								"format": "binary",
+							},
+						},
+					},
+				},
+			},
+		},
+		"responses": responseMap("201", "created", "400", "invalid file", "401", "invalid token", "500", "internal error"),
+	}
 }
 
 func operationWithID(tag string, summary string, description string, security any, responses gin.H) gin.H {

@@ -64,6 +64,18 @@
     {
       "key": "notification_id",
       "value": ""
+    },
+    {
+      "key": "media_image_url",
+      "value": ""
+    },
+    {
+      "key": "media_video_url",
+      "value": ""
+    },
+    {
+      "key": "media_post_id",
+      "value": ""
     }
   ],
   "item": [
@@ -2985,6 +2997,196 @@
             "description": "查询目标用户通知列表。预期能看到当前用户关注目标用户产生的 follow 通知。"
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Module 24 - Media Posts",
+      "item": [
+        {
+          "name": "POST /api/v1/uploads/media - image",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.url) {",
+                  "  pm.collectionVariables.set(media_image_url, json.data.url);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "请选择 jpg/jpeg/png/webp/gif，最大 5MB"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/uploads/media",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "media"
+              ]
+            },
+            "description": "上传图片。Postman 中需要手动在 file 字段选择本地图片文件，成功后保存 media_image_url。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/uploads/media - video",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.url) {",
+                  "  pm.collectionVariables.set(media_video_url, json.data.url);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "请选择 mp4/webm/mov，最大 50MB"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/uploads/media",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                "media"
+              ]
+            },
+            "description": "上传视频。Postman 中需要手动在 file 字段选择本地视频文件，成功后保存 media_video_url。"
+          },
+          "response": []
+        },
+        {
+          "name": "POST /api/v1/posts - mixed media",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.data && json.data.id) {",
+                  "  pm.collectionVariables.set(media_post_id, json.data.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"FeedLab mixed media post\",\n  \"content\": \"这是一篇图文视频复合型帖子。\",\n  \"status\": \"published\",\n  \"media\": [\n    {\n      \"media_type\": \"image\",\n      \"url\": \"{{media_image_url}}\",\n      \"original_name\": \"postman-image\",\n      \"mime_type\": \"image/jpeg\",\n      \"size_bytes\": 0,\n      \"sort_order\": 1\n    },\n    {\n      \"media_type\": \"video\",\n      \"url\": \"{{media_video_url}}\",\n      \"original_name\": \"postman-video\",\n      \"mime_type\": \"video/mp4\",\n      \"size_bytes\": 0,\n      \"sort_order\": 2\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts"
+              ]
+            },
+            "description": "使用上传接口返回的 URL 创建 mixed 帖子。若只想测试图片帖，可删除 video 项。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/v1/posts/:id - media detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/posts/{{media_post_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "posts",
+                "{{media_post_id}}"
+              ]
+            },
+            "description": "查看媒体帖子详情，预期 data.content_type 为 mixed，data.media 包含图片和视频。"
+          },
+          "response": []
+        },
+        {
+          "name": "GET uploaded image URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{media_image_url}}",
+              "host": [
+                "{{base_url}}{{media_image_url}}"
+              ]
+            },
+            "response": [],
+            "description": "直接访问上传图片静态地址，验证 /uploads/*filepath 静态路由可用。"
+          }
         }
       ]
     }

@@ -182,6 +182,13 @@ export const modules: QuizModule[] = [
     subtitle: "幂等脚本、演示账号、稳定数据",
     accent: "#22c55e",
     summary: "理解为什么找实习展示项目需要可重复生成演示数据，以及 seed 脚本如何避免泄露真实账号和误删数据。"
+  },
+  {
+    id: "module-media-posts",
+    title: "媒体帖子模块",
+    subtitle: "multipart、本地静态文件、MIME 校验、post_media",
+    accent: "#0ea5e9",
+    summary: "理解图片/视频上传为什么要和发帖拆开，为什么文件不直接存 MySQL，以及媒体数组如何支持图文视频复合型帖子。"
   }
 ];
 
@@ -1998,5 +2005,84 @@ export const questions: Question[] = [
     keyPoints: ["直接写通知表", "不依赖 consumer", "真实链路仍在", "message_id 幂等"],
     interviewTips: ["可以主动说明：V4 验收文档仍用于证明 MQ 真实链路。"],
     codeRefs: ["backend/cmd/seed-demo/main.go", "docs/feedlab-v4-acceptance-and-demo.md"]
+  },
+  {
+    id: "media-upload-mysql-1",
+    moduleId: "module-media-posts",
+    type: "single",
+    title: "为什么不把图片/视频直接存 MySQL？",
+    prompt: "FeedLab 媒体帖子把文件保存到 uploads 目录，MySQL 只保存 URL 和元数据。这样设计最核心的原因是什么？",
+    choices: [
+      { id: "A", text: "大文件直接进 MySQL 会让数据库膨胀，备份和查询压力变大" },
+      { id: "B", text: "MySQL 不能保存任何字符串" },
+      { id: "C", text: "这样就不需要鉴权了" },
+      { id: "D", text: "这样可以绕过文件类型校验" }
+    ],
+    correctAnswers: ["A"],
+    referenceAnswer: "图片和视频属于大文件，更适合放在文件系统或对象存储中。MySQL 保存 URL、MIME、大小、排序等元数据即可。这样数据库更轻，也方便后续把本地上传迁移到 OSS/S3/CDN。",
+    explanation: "数据库适合保存结构化元数据，不适合承载大量二进制媒体内容。真实项目通常会把文件存对象存储，业务表只存访问地址。",
+    whyOthersWrong: {
+      B: "MySQL 可以保存字符串，当前 URL 就是字符串。",
+      C: "上传接口仍然需要 JWT，静态文件公开访问是内容社区展示策略。",
+      D: "文件类型和大小校验仍然必须做。"
+    },
+    keyPoints: ["大文件", "元数据", "URL", "对象存储", "数据库压力"],
+    interviewTips: ["可以补一句：本地 uploads 是展示版，生产环境会迁移到对象存储和 CDN。"],
+    codeRefs: ["backend/internal/service/upload_service.go", "backend/internal/model/post_media.go"]
+  },
+  {
+    id: "media-upload-multipart-1",
+    moduleId: "module-media-posts",
+    type: "short",
+    title: "multipart 和 JSON 的区别",
+    prompt: "为什么上传接口使用 multipart/form-data，而创建帖子接口仍然使用 JSON？",
+    referenceAnswer: "上传接口要传文件二进制，所以使用 multipart/form-data，它可以把文件字段和普通表单字段一起传给后端。创建帖子接口传的是标题、正文、media 数组等结构化业务数据，用 JSON 更清晰。FeedLab 先上传文件拿 URL，再把 URL 放入 JSON 创建帖子。",
+    explanation: "这道题训练你区分文件传输和业务数据传输。不要把所有请求都理解成 JSON。",
+    keyPoints: ["multipart/form-data", "文件二进制", "JSON", "结构化业务数据", "先上传后发帖"],
+    interviewTips: ["可以说：文件上传是资源接口，发帖是业务接口，两者拆开后前端能先预览和移除媒体。"],
+    codeRefs: ["backend/internal/controller/upload_controller.go", "frontend/src/api/client.ts"]
+  },
+  {
+    id: "media-upload-security-1",
+    moduleId: "module-media-posts",
+    type: "multiple",
+    title: "上传接口需要哪些安全限制？",
+    prompt: "FeedLab 当前上传接口做了哪些基础安全控制？",
+    choices: [
+      { id: "A", text: "上传接口需要 JWT 登录" },
+      { id: "B", text: "限制图片和视频扩展名/MIME 类型" },
+      { id: "C", text: "限制单文件大小" },
+      { id: "D", text: "用随机文件名保存，减少原文件名冲突风险" }
+    ],
+    correctAnswers: ["A", "B", "C", "D"],
+    referenceAnswer: "当前上传接口需要登录；图片限制 jpg/jpeg/png/webp/gif 且最大 5MB，视频限制 mp4/webm/mov 且最大 50MB；后端会检测扩展名和 MIME，并用随机文件名保存到按年月分层的 uploads 目录。",
+    explanation: "上传接口是高风险入口，至少要做身份、类型、大小和文件名控制。生产环境还应加病毒扫描、鉴黄、转码和对象存储权限控制。",
+    keyPoints: ["JWT", "MIME", "大小限制", "随机文件名", "uploads/YYYY/MM"],
+    interviewTips: ["可以主动说明当前是展示版，生产还要补安全扫描和对象存储。"],
+    codeRefs: ["backend/internal/service/upload_service.go", "backend/internal/router/router.go"]
+  },
+  {
+    id: "media-post-transaction-1",
+    moduleId: "module-media-posts",
+    type: "short",
+    title: "媒体帖子为什么也要事务？",
+    prompt: "创建媒体帖子时，为什么 posts、post_media 和 users.post_count 要放进同一个事务？",
+    referenceAnswer: "媒体帖子创建不是只写一张表：需要插入 posts 主记录、插入多条 post_media 资源关系，如果是 published 还要更新作者 post_count。事务能保证这些数据库操作要么一起成功，要么一起失败，避免帖子存在但媒体关系没写入，或者发帖数错误。",
+    explanation: "文件本身已经上传到本地目录，发帖事务负责数据库一致性。后续如果要更严格，可以在发帖失败时清理未使用上传文件。",
+    keyPoints: ["posts", "post_media", "users.post_count", "事务", "一致性"],
+    interviewTips: ["可以强调：Controller 不开事务，Service 编排事务，Repository 只执行具体 GORM 写入。"],
+    codeRefs: ["backend/internal/service/post_service.go", "backend/internal/repository/post_repository.go"]
+  },
+  {
+    id: "media-post-content-type-1",
+    moduleId: "module-media-posts",
+    type: "code",
+    title: "content_type 如何自动推导？",
+    prompt: "请按当前代码解释 article、image、video、mixed 是如何决定的。",
+    referenceAnswer: "前端会根据待发布 media 数组推导 content_type，但后端 Service 不完全信任前端，而是再次根据 media 数组调用 derivePostContentType：没有媒体就是 article；只有图片是 image；只有视频是 video；图片和视频同时存在就是 mixed。这样即使前端传错 content_type，后端也按真实 media 数据保存。",
+    explanation: "这体现了后端兜底校验：前端可以提升体验，但业务事实仍由后端根据请求数据确定。",
+    keyPoints: ["media 数组", "article", "image", "video", "mixed", "后端兜底"],
+    interviewTips: ["可以说：content_type 是展示和筛选字段，真实资源关系以 post_media 表为准。"],
+    codeRefs: ["backend/internal/service/post_service.go", "frontend/src/App.tsx"]
   }
 ];
